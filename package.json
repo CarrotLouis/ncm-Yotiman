@@ -1,6 +1,6 @@
 {
   "name":"ncm-yotiman",
-  "version":"0.1.4",
+  "version":"0.1.5",
   "private":true,
   "description":"Independent BetterNCM Yomitan dictionary and Anki companion",
   "scripts":{"test":"node tests/selection.test.cjs && node tests/cef-input.test.cjs && node tests/hover.test.cjs && node tests/range-match.test.cjs && node tests/plugin.test.cjs && node tests/bridge.test.cjs","build":"node tools/pack.cjs"},

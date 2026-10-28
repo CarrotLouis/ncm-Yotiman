@@ -109,7 +109,10 @@
 				if(e.type==='keydown'&&e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]'))return;
 				const held=e.type==='keydown';if(held&&shiftHeld)return;
 				shiftHeld=held;
-				if(held){cancelSpan();spanBlocked=false;diagnostics.input.shiftDown++;capture.lines(doc);doc.body.classList.add('fg-dictionary-select');updateSpan();}
+				if(held){
+					cancelSpan();clearHighlight();win.getSelection().removeAllRanges();
+					spanBlocked=false;diagnostics.input.shiftDown++;capture.lines(doc);doc.body.classList.add('fg-dictionary-select');updateSpan();
+				}
 				else{
 					if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;
 					if(spanAnchor&&!armed){updateSpan();const selected=capture.fromSelection(win.getSelection(),doc);cancelSpan();if(selected){showHighlight(selected);diagnostics.hover++;lookup(selected);}}

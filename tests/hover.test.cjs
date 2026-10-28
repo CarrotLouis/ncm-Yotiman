@@ -21,6 +21,9 @@ function selected(){return win.getSelection().rangeCount?capture.plain(win.getSe
  move(start);await tick();assert.equal(sent.length,0);
  key('keydown');move(end);await tick(180);assert.equal(sent.length,0,'Holding Shift must never query before confirmation');assert.equal(selected(),'成り果てる','Selection crosses ruby 成, plain り and ruby 果てる');
  key('keyup');await tick();assert.equal(sent.length,1);assert.equal(sent[0].term,'成り果てる');assert.equal(sent[0].offset,start);assert.equal(sent[0].matchMode,'longest-in-range');assert(!JSON.stringify(sent).includes('"range":'));assert.equal(adapter.diagnostics().down,0);
+ // Opening the dictionary blurs the music window and clears its cached cursor.
+ // Starting again without a mouse move must immediately discard the old range.
+ win.dispatchEvent(new win.Event('blur'));key('keydown');assert(win.getSelection().isCollapsed,'A fresh Shift press clears the previous selection even without a known pointer');assert(!line.hasAttribute('data-ncm-yotiman-highlight'));key('keyup');await tick();assert.equal(sent.length,1,'No new range must not resubmit the previous word');
  move(end);key('keydown');move(start);key('keyup');await tick();assert.equal(sent.length,2);assert.equal(sent[1].term,'成り果てる','Reverse movement flushes the final frame on Shift release');
  move(start);key('keydown');move(end);win.dispatchEvent(new win.Event('blur'));key('keyup');await tick();assert.equal(sent.length,2,'Focus loss cancels unconfirmed range');
  move(start);key('keydown');move(end);config.dictionaryInputMode='drag';changed();key('keyup');await tick();assert.equal(sent.length,2,'Changing mode cancels selection');

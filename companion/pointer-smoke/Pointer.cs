@@ -48,6 +48,17 @@ internal sealed class PointerRunner : Form {
         if(!old&&(count!=1||parsed["term"].ToString()!=expected||parsed["reading"].ToString()!="あなた"))throw new Exception("Lookup failed: "+mode);
         if(hover&&Convert.ToInt32(((Dictionary<string,object>)parsed["diagnostics"])["down"])!=0)throw new Exception("Hover must work without a mouse press");
         if(hover&&parsed["highlight"].ToString()!=expected)throw new Exception("Shift range did not visibly select the complete word");
+        if(hover){
+            await view.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('blur'))");
+            await Input("dispatchKeyEvent",new {type="keyDown",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16,modifiers=8});
+            if(await view.CoreWebView2.ExecuteScriptAsync("getSelection().isCollapsed&&!document.querySelector('[data-ncm-yotiman-highlight]')")!="true")throw new Exception("Fresh Shift press retained the previous selection without a cached pointer");
+            raw=json.Deserialize<string>(await view.CoreWebView2.ExecuteScriptAsync("(()=>{const r=document.createRange();r.selectNodeContents(document.querySelector('[data-end] ruby').firstChild);const b=r.getBoundingClientRect();return JSON.stringify({x:b.left+.1,end:b.right-.1,y:(b.top+b.bottom)/2});})()"));box=json.Deserialize<Dictionary<string,double>>(raw);x=box["x"];end=box["end"];y=box["y"];
+            await Input("dispatchMouseEvent",new {type="mouseMoved",x,y,modifiers=8});
+            for(int i=1;i<=5;i++)await Input("dispatchMouseEvent",new {type="mouseMoved",x=x+(end-x)*i/5,y,modifiers=8});
+            await Input("dispatchKeyEvent",new {type="keyUp",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16,modifiers=0});await Task.Delay(150);
+            if(await view.CoreWebView2.ExecuteScriptAsync("lookups.length===2&&lookups[1].term==='果てる'&&NcmYotimanSelection.plain(getSelection().getRangeAt(0).cloneContents())==='果てる'")!="true")throw new Exception("Second Shift selection did not start a fresh range");
+            File.AppendAllText(Path.Combine(output,"pointer.log"),mode+" restart PASS"+Environment.NewLine);
+        }
     }
     async Task Run(){Directory.CreateDirectory(output);try{var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(output,"profile"));await view.EnsureCoreWebView2Async(env);foreach(string mode in new[]{"old-pointer-only","mouse-only","blocked-native-selection","no-caret-api","annotated-native-line","shift-range","shift-range-no-caret","shift-range-before-move","shift-range-transformed","shift-range-reverse"})await RunCase(mode);File.AppendAllText(Path.Combine(output,"pointer.log"),"PASS"+Environment.NewLine);}catch(Exception e){File.AppendAllText(Path.Combine(output,"pointer.log"),"FAIL "+e+Environment.NewLine);}Close();}
 }

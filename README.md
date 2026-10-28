@@ -2,7 +2,7 @@
 
 网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，**按住 Shift 移动鼠标连续划选，松开 Shift 查词**，也支持 Shift 配合鼠标左键拖选；通过 Yomitan 原生 Anki integration 制卡。
 
-**当前为 0.1.4 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
+**当前为 0.1.5 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
 
 ## 功能
 
@@ -35,7 +35,7 @@
 4. 如果制卡，在 Yomitan → Anki 中启用连接，再进入 Configure Anki flashcards，**选牌组、笔记类型，映射字段**。仅打开 Enable Anki integration 还不能制卡。
 5. 句子字段可用 `{sentence}` 或 `{sentence-furigana}`，歌曲信息用 `{document-title}`，释义可用 `{glossary}`。字段名取决于自己的笔记类型。
 
-同一次查词保留当时整行文字和读音，之后歌词滚动或切歌不会改变这张卡片的上下文。松开 Shift 才查询，划选中切走窗口、关闭功能或更换查词方式会取消；没有按住 Shift 时不扫描歌词。查询严格限制在同一行、最多 120 字符的选区内，不向选区外补字；没有匹配时保留选区并显示无结果。
+同一次查词保留当时整行文字和读音，之后歌词滚动或切歌不会改变这张卡片的上下文。再次按下 Shift 会立即清除旧选区，重新开始划选，无需先点击其他位置。松开 Shift 才查询，划选中切走窗口、关闭功能或更换查词方式会取消；没有按住 Shift 时不扫描歌词。查询严格限制在同一行、最多 120 字符的选区内，不向选区外补字；没有匹配时保留选区并显示无结果。
 
 ## 与早期合并实验版的关系
 
@@ -57,7 +57,7 @@ powershell -NoProfile -File tools/build-yomitan.ps1 -YomitanArchive C:\Downloads
 npm run build
 ```
 
-生成 `builds/ncm-yotiman-0.1.4.plugin`。构建不会自动安装、重启网易云或发布 Release。
+生成 `builds/ncm-yotiman-0.1.5.plugin`。构建不会自动安装、重启网易云或发布 Release。
 仓库仅包含源码和测试，不包含第三方词典、用户 profile、Anki 卡片和运行时歌词。
 
 ## 故障定位
@@ -90,6 +90,10 @@ Windows 原生测试已验证：
 可通过 `companion/pointer-smoke/Pointer.csproj` 重跑浏览器拖选回归，通过 `companion/yomitan-smoke/Smoke.csproj` 和 `tests/yomitan-anki-mock.cjs` 重跑原生集成测试。测试数据必须保存在仓库外的专用目录。
 
 完整客户端鼠标交互仍需在实际网易云/RNP 中验证；该版本不宣称已通过所有环境验证。
+
+### 0.1.5：重新划选时清除旧选区
+
+再次按下 Shift 即清除上一次的高亮和选区，从当前鼠标位置重新开始；查词窗口曾取得焦点、鼠标位置暂时未知时也立即清除旧选区。无需先点击空白处，也不会在没有新选区时重复提交旧词。
 
 ### 0.1.4：连续划选与选区内最长匹配
 
