@@ -1,0 +1,16 @@
+node_modules/
+builds/
+outputs/
+work/
+src/yomitan-host/
+companion/**/bin/
+companion/**/obj/
+*.local.json
+profile/
+requests/
+lyrics/
+*.zip
+*.plugin
+*.log
+Thumbs.db
+.DS_Store

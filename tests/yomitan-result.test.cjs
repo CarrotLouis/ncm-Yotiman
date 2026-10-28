@@ -1,0 +1,21 @@
+// Check a private native-smoke run; no dictionary contents are checked into Git.
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const directory=process.argv[2];if(!directory)throw new Error('Pass the private native-smoke directory');
+const requests=fs.readFileSync(path.join(directory,'anki-mock.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+const note=requests.filter(r=>r.action==='addNote').at(-1)?.params.note;
+const media=requests.filter(r=>r.action==='storeMediaFile').at(-1)?.params;
+assert(note,'Original Yomitan Add button must reach the mock Anki server');
+assert.equal(note.fields.Expression,'歌う');
+assert.equal(note.fields.Sentence,'私は<ruby>戀人<rt>あなた</rt></ruby>と<ruby>歌う<rt>うたう</rt></ruby>。');
+assert.equal(note.fields.SentenceRuby,note.fields.Sentence);
+assert.equal(note.fields.SentencePlain,'私は 戀人[あなた]と 歌う[うたう]。');
+assert.equal(note.fields.Source,'試験曲 — 試験歌手');
+assert(media);assert.equal(Buffer.from(media.data,'base64').length,844);
+assert.equal(note.fields.SentenceAudio,'[sound:'+media.filename+']');
+assert(requests.every(r=>!r.key),'Do not use a real Anki API key in the smoke fixture');
+const all=fs.readFileSync(path.join(directory,'smoke.log'),'utf8');
+const log=all.slice(Math.max(0,all.lastIndexOf(' BEGIN')));
+assert(log.includes('"action":"audioForNote"'));
+assert(!log.includes('FAIL '));
+console.log('Native Yomitan passed: dictionary display, original Add button, current custom furigana in sentence/ruby/plain fields, title and selected audio. Real Anki was not contacted.');

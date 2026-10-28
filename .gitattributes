@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.jpg -text
+*.png -text
+*.plugin -text
+*.zip -text
