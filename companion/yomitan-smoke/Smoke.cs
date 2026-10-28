@@ -12,7 +12,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 internal static class SmokeRunner {
     static Dictionary<string,object> Context() => new Dictionary<string,object> {
-        {"term","歌う"},{"sentence","私は戀人と歌う。"},{"offset",5},{"title","試験曲 — 試験歌手"},{"url","https://music.163.com/song?id=42"},
+        {"term","歌う"},{"sentence","私は戀人と歌う。"},{"offset",5},{"title","試験曲 — 試験歌手"},{"url","https://music.163.com/song?id=42"},{"matchMode","longest-in-range"},
         {"segments",new [] {
             new Dictionary<string,object>{{"text","私は"},{"reading",""}},new Dictionary<string,object>{{"text","戀人"},{"reading","あなた"}},
             new Dictionary<string,object>{{"text","と"},{"reading",""}},new Dictionary<string,object>{{"text","歌う"},{"reading","うたう"}},
@@ -48,6 +48,21 @@ internal static class SmokeRunner {
                     await Wait(core,"window.__ncmSmoke==='configured'",240);
                     write("SETUP configured");
                     int navigations=0;core.NavigationStarting+=(x,a)=>navigations++;
+                    foreach(string selected in new[]{"成り果てる","魔物に成り果てる","に成り果てる","成り"}){
+                        const string sentence="彼は魔物に成り果てる。";int at=sentence.IndexOf(selected,StringComparison.Ordinal);
+                        var range=new Dictionary<string,object>{{"term",selected},{"sentence",sentence},{"offset",at},{"title","Synthetic"},{"url","https://music.163.com/song?id=42"},{"matchMode","longest-in-range"}};
+                        anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(range,anchor.Handle);
+                        string match=Json.Encode(window.LastMatch);write("RANGE "+selected+" "+match+" MS "+startup.ElapsedMilliseconds);
+                        var matched=Json.Read(match);int offset=Convert.ToInt32(matched["offset"]),length=Convert.ToInt32(matched["length"]);
+                        if(offset<at||offset+length>at+selected.Length)throw new Exception("Dictionary match escaped the selected range");
+                        if(selected!="成り"&&(Json.Text(matched,"text")!="成り果てる"||offset!=5))throw new Exception("Did not choose the longest inner word");
+                        if(await core.ExecuteScriptAsync("history.state.state.sentence.offset==="+offset)!="true")throw new Exception("Anki sentence offset did not follow the match");
+                        if(selected=="魔物に成り果てる"){
+                            await Wait(core,"!!document.querySelector('[data-action=save-note]:not(:disabled)')");
+                            await core.ExecuteScriptAsync("document.querySelector('[data-action=save-note]').click()");await Task.Delay(1500);
+                            write("RANGE_NOTE requested");
+                        }
+                    }
                     anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(Context(),anchor.Handle);write("FIRST_LOOKUP_MS "+startup.ElapsedMilliseconds);
                     var next=Context();next["term"]="歌";next["theme"]="light";anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(next,anchor.Handle);write("NEXT_LOOKUP_MS "+startup.ElapsedMilliseconds);if(navigations!=0)throw new Exception("A lookup reloaded the search page");
                     await Wait(core,"document.documentElement.dataset.theme==='light'");using(var image=File.Create(Path.Combine(args[0],"lookup-light.png")))await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,image);

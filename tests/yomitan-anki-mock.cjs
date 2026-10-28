@@ -7,7 +7,7 @@ function result(q) {
  case 'version':return 6;
  case 'apiReflect':return {scopes:['actions'],actions:['version','addNote','storeMediaFile','canAddNotes','canAddNotesWithErrorDetail','findNotes','notesInfo','cardsInfo','deckNames','modelNames','modelFieldNames']};
  case 'deckNames':case 'modelNames':return ['Smoke'];
- case 'modelFieldNames':return ['Expression','Sentence','SentenceRuby','SentencePlain','SentenceAudio','Source'];
+ case 'modelFieldNames':return ['Expression','Sentence','SentenceRuby','SentencePlain','SentenceAudio','Source','ClozePrefix','ClozeBody','ClozeSuffix'];
  case 'canAddNotes':return q.params.notes.map(()=>true);
  case 'canAddNotesWithErrorDetail':return q.params.notes.map(()=>({canAdd:true}));
  case 'findNotes':case 'findCards':case 'notesInfo':case 'cardsInfo':return [];

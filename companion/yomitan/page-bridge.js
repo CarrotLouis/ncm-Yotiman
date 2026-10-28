@@ -39,11 +39,32 @@
     ClipboardMonitor.prototype.start=function(){};
     const setContent=Display.prototype.setContent;
     Display.prototype.setContent=function(details){
-      if(nextQuery!==null&&details.params.query===nextQuery){nextQuery=null;details={...details,params:{...details.params,full:context.sentence,offset:String(context.offset)},state:{...details.state,sentence:{text:context.sentence,offset:context.offset},documentTitle:context.title,url:context.url}};}
+      this.__ncmRangeRequest=null;
+      if(nextQuery!==null&&details.params.query===nextQuery){nextQuery=null;details={...details,params:{...details.params,full:context.sentence,offset:String(context.offset),wildcards:'off'},state:{...details.state,sentence:{text:context.sentence,offset:context.offset},documentTitle:context.title,url:context.url}};this.__ncmRangeRequest={value:context,state:details.state,match:null};}
       return setContent.call(this,details);
     };
-    const find=API.prototype.termsFind;
-    API.prototype.termsFind=async function(query,...args){try{return await find.call(this,query,...args);}finally{chrome.webview.postMessage({action:'lookupComplete',query});}};
+    const find=Display.prototype._findDictionaryEntries;
+    Display.prototype._findDictionaryEntries=async function(isKanji,query,primaryReading,wildcards,options){
+      const request=this.__ncmRangeRequest,value=request&&request.value;
+      if(!value||isKanji||query!==value.term||value.matchMode!=='longest-in-range')return find.call(this,isKanji,query,primaryReading,wildcards,options);
+      const result=await window.NcmYotimanRangeMatch.longest(query,text=>this._application.api.termsFind(text,{primaryReading},options));
+      if(this.__ncmRangeRequest!==request)return [];
+      if(result.length){
+        const offset=value.offset+result.offset;
+        request.match={offset,length:result.length,text:result.text};
+        // Display holds this same state object while awaiting the dictionary.
+        // Correct the cloze origin before it builds entries or Anki templates.
+        request.state.sentence={text:value.sentence,offset};
+        this._setQuery(result.text,value.sentence,offset);
+      }
+      return result.dictionaryEntries;
+    };
+    const content=Display.prototype._setContentTermsOrKanji;
+    Display.prototype._setContentTermsOrKanji=async function(...args){
+      const request=this.__ncmRangeRequest;let error=null;
+      try{return await content.apply(this,args);}catch(e){error=e.message;throw e;}
+      finally{if(request&&this.__ncmRangeRequest===request)chrome.webview.postMessage({action:'lookupComplete',query:request.value.term,match:request.match,error});}
+    };
     window.NcmYotimanLookup=value=>{if(document.documentElement.dataset.loaded!=='true')return false;setContext(value);nextQuery=value.term;document.querySelector('#search-textbox').value=value.term;document.querySelector('#search-button').click();return true;};
     const ready=()=>{if(document.documentElement.dataset.loaded==='true'){chrome.webview.postMessage({action:'pageReady'});return true;}return false;};
     if(!ready()){const observer=new MutationObserver(()=>{if(ready())observer.disconnect();});observer.observe(document.documentElement,{attributes:true,attributeFilter:['data-loaded']});}

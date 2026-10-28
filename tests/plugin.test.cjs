@@ -21,7 +21,8 @@ for(const entry of manifest.injects.Main)win.eval(fs.readFileSync(path.resolve(_
  const status=await win.NcmYotiman.probe();assert(status.helperExists&&status.hasTrack);assert(!JSON.stringify(status).includes('試験曲'));
  const panel=handlers.panel();assert(panel.textContent.includes('Yomitan'));assert(panel.querySelector('input').checked);
  win.document.body.append(panel);const mode=panel.querySelector('[data-input-mode]'),group=menu.querySelector('.rnp-group[data-tab="ncm-yotiman"]');
- assert.equal(mode.value,'hover','Shift hover is the default for an existing enabled installation');
+ assert.equal(mode.value,'hover','Retain the stored input-mode value when migrating to Shift range selection');
+ assert.equal(mode.selectedOptions[0].textContent,'Shift 划选');assert.equal(group.querySelector('[data-input-mode="hover"]').textContent,'Shift 划选');
  assert.equal(group.querySelector('[data-input-mode="hover"]').getAttribute('aria-pressed'),'true');
  mode.value='drag';mode.dispatchEvent(new win.Event('change'));assert.equal(win.NcmYotiman.config.dictionaryInputMode,'drag');
  assert.equal(group.querySelector('[data-input-mode="drag"]').getAttribute('aria-pressed'),'true');

@@ -11,6 +11,8 @@ assert.equal(note.fields.Sentence,'私は<ruby>戀人<rt>あなた</rt></ruby>�
 assert.equal(note.fields.SentenceRuby,note.fields.Sentence);
 assert.equal(note.fields.SentencePlain,'私は 戀人[あなた]と 歌う[うたう]。');
 assert.equal(note.fields.Source,'試験曲 — 試験歌手');
+const rangeNote=requests.filter(r=>r.action==='addNote').map(r=>r.params.note).find(n=>n.fields.ClozeBody==='成り果てる');
+assert(rangeNote,'Longest inner-range result must reach the original Anki Add operation');assert.equal(rangeNote.fields.ClozePrefix,'彼は魔物に');assert.equal(rangeNote.fields.ClozeSuffix,'。');assert.equal(rangeNote.fields.Sentence,'彼は魔物に成り果てる。');
 assert(media);assert.equal(Buffer.from(media.data,'base64').length,844);
 assert.equal(note.fields.SentenceAudio,'[sound:'+media.filename+']');
 assert(requests.every(r=>!r.key),'Do not use a real Anki API key in the smoke fixture');

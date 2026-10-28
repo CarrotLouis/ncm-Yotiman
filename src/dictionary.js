@@ -6,7 +6,7 @@
 	'use strict';
 	const TAB='ncm-yotiman';
 	const LINES=capture.LINES;
-	const INPUT_MODES=[['hover','Shift 悬停'],['drag','Shift＋左键拖选'],['both','两种均可']];
+	const INPUT_MODES=[['hover','Shift 划选'],['drag','Shift＋左键拖选'],['both','两种均可']];
 	function quotePath(value) {
 		if(!value || /["\r\n\x00]/.test(value)) throw new Error('词典组件路径无效');
 		return '"'+value+'"';
@@ -42,7 +42,7 @@
 	}
 	function install(api,doc=document) {
 		const win=doc.defaultView,menus=new Map(); let enabled=false,armed=false,anchor=null,shiftHeld=false,source='',swallowClick=false,inflight=false,error='',disposed=false,notice=null,noticeTimer;
-		let pointer=null,hoverPoint=null,hoverTimer=null,hoverEpoch=0,lastHover=null,previewFrame=null,preview=null,highlight=null,warmupTimer=null;
+		let pointer=null,spanAnchor=null,spanBlocked=false,previewFrame=null,highlight=null,warmupTimer=null,queuedLookup=null;
 		let inputMode=api.config().dictionaryInputMode||'hover';
 		const diagnostics={down:0,hover:0,selected:0,sent:0,warmed:false,lastLookupMs:null,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
 		const bridge=api.transport || transport(api.betterncm,api.plugin);
@@ -50,7 +50,6 @@
 		style.textContent=`${LINES.split(',').map(s=>'body.fg-dictionary-select '+s+',body.fg-dictionary-select '+s+' *').join(',')} {user-select:text!important;-webkit-user-select:text!important;cursor:text!important}
 		${LINES.split(',').map(s=>'body.ncm-yotiman-enabled '+s+',body.ncm-yotiman-enabled '+s+' *').join(',')},body.ncm-yotiman-enabled .rnp-lyrics,body.ncm-yotiman-enabled .rnp-lyrics-line { -webkit-app-region:no-drag!important; }
 		body.fg-dictionary-select .fg-rt,body.fg-dictionary-select rt,body.fg-dictionary-select .rnp-karaoke-word-filler {user-select:none!important;-webkit-user-select:none!important;pointer-events:none!important}
-		body.ncm-yotiman-enabled .ncm-yotiman-word{outline:2px solid #67d8ff;outline-offset:2px;border-radius:3px;background:#67d8ff22}
 		[data-ncm-yotiman-highlight],[data-ncm-yotiman-highlight] *{user-select:text!important;-webkit-user-select:text!important}
 		[data-ncm-yotiman-highlight] .fg-rt,[data-ncm-yotiman-highlight] rt{user-select:none!important;-webkit-user-select:none!important}
 		[data-ncm-yotiman-highlight] ::selection,[data-ncm-yotiman-highlight]::selection{background:#67d8ff66;color:inherit}
@@ -66,7 +65,7 @@
 			}
 		}
 		async function send(action,context) {
-			try { error=''; refresh(); await bridge.send(action,context); }
+			try { error=''; refresh(); return await bridge.send(action,context); }
 			catch(e) {
 				if(action==='shutdown' || disposed) return;
 				error=e.message; refresh(); api.error && api.error(error);
@@ -77,49 +76,51 @@
 		}
 		function openSettings() { return send('settings'); }
 		function warmup(){clearTimeout(warmupTimer);if(enabled&&!api.transport)warmupTimer=setTimeout(()=>{bridge.send('warmup',{theme:api.theme?api.theme():'dark'}).then(()=>{diagnostics.warmed=true;}).catch(()=>{});},400);}
-		function clearHighlight(){if(highlight){highlight.line.removeAttribute('data-ncm-yotiman-highlight');if(highlight.unit)highlight.unit.classList.remove('ncm-yotiman-word');const selection=win.getSelection();if(selection.rangeCount&&highlight.range&&selection.getRangeAt(0).startContainer===highlight.range.startContainer)selection.removeAllRanges();highlight=null;}}
-		function showHighlight(context){if(!context.range)return;clearHighlight();highlight=context;context.line.setAttribute('data-ncm-yotiman-highlight','');if(context.unit)context.unit.classList.add('ncm-yotiman-word');const selection=win.getSelection();selection.removeAllRanges();selection.addRange(context.range.cloneRange());}
-		function cancelHover(){clearTimeout(hoverTimer);hoverTimer=null;hoverPoint=null;hoverEpoch++;}
-		function reset() { cancelHover();if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;preview=null;pointer=null;lastHover=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
-		async function lookup(selected,mode,valid=()=>true){
-			if(!selected||inflight)return;
+		function clearHighlight(){if(highlight){highlight.line.removeAttribute('data-ncm-yotiman-highlight');const selection=win.getSelection();if(selection.rangeCount&&highlight.range&&selection.getRangeAt(0).startContainer===highlight.range.startContainer)selection.removeAllRanges();highlight=null;}}
+		function showHighlight(context){if(!context.range)return;clearHighlight();highlight=context;context.line.setAttribute('data-ncm-yotiman-highlight','');const selection=win.getSelection();selection.removeAllRanges();selection.addRange(context.range.cloneRange());}
+		function cancelSpan(){if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;spanAnchor=null;}
+		function reset() { cancelSpan();queuedLookup=null;spanBlocked=false;pointer=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
+		async function lookup(selected){
+			if(!selected)return;if(inflight){queuedLookup=selected;return;}
 			diagnostics.selected++;inflight=true;
 			try {
-				const track=await api.track();if(!enabled||!valid())return;
+				const track=await api.track();if(!enabled)return;
 				if(!track||!track.id)throw new Error('未取得歌曲 ID，请打开歌曲播放页后重试');
-				diagnostics.sent++;diagnostics.last=mode==='hover'?'正在悬停查词…':'正在查词…';refresh();
-				const started=Date.now();await send('lookup',{...selected,theme:api.theme?api.theme():'dark',title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});diagnostics.lastLookupMs=Date.now()-started;
+				diagnostics.sent++;diagnostics.last='正在查词…';refresh();
+				const started=Date.now();const reply=await send('lookup',{...selected,matchMode:'longest-in-range',theme:api.theme?api.theme():'dark',title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});diagnostics.lastLookupMs=Date.now()-started;
+				const match=reply&&reply.match;
+				if(highlight===selected&&selected.line.isConnected&&capture.snapshot(selected.line).sentence===selected.sentence&&match&&Number.isInteger(match.offset)&&Number.isInteger(match.length)&&match.length>0&&match.offset>=selected.offset&&match.offset+match.length<=selected.offset+selected.term.length){const actual=capture.fromOffsets(doc,selected.line,match.offset,match.offset+match.length);if(actual&&actual.term===match.text)showHighlight(actual);}
 				diagnostics.last='查词窗口已打开';refresh();
-			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;}
+			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;const next=queuedLookup;queuedLookup=null;if(next&&enabled&&next.line.isConnected&&capture.snapshot(next.line).sentence===next.sentence)lookup(next);}
 		}
-		function scheduleHover(point){
-			if(inputMode==='drag'||!point||armed||inflight){cancelHover();return;}
-			hoverPoint=point;if(previewFrame!==null)return;
-			previewFrame=win.requestAnimationFrame(()=>{
-				previewFrame=null;const current=hoverPoint;if(!current||!enabled||armed)return;
-				const target=typeof doc.elementFromPoint==='function'?doc.elementFromPoint(current.clientX,current.clientY):current.target;
-				if(!target||!target.isConnected)return;
-				const selected=capture.fromPoint(doc,{...current,target});
-				if(!selected){cancelHover();preview=null;clearHighlight();return;}
-				if(preview&&preview.line===selected.line&&preview.offset===selected.offset&&preview.term===selected.term&&preview.sentence===selected.sentence)return;
-				cancelHover();preview=selected;showHighlight(selected);const epoch=hoverEpoch;
-				if(lastHover&&lastHover.line===selected.line&&lastHover.offset===selected.offset&&lastHover.term===selected.term&&lastHover.sentence===selected.sentence)return;
-				hoverTimer=setTimeout(()=>{hoverTimer=null;if(epoch!==hoverEpoch||!enabled||armed||inflight||!selected.range.startContainer.isConnected)return;lastHover=selected;diagnostics.hover++;lookup(selected,'hover',()=>epoch===hoverEpoch);},140);
-			});
+		function updateSpan(){
+			if(!pointer||!enabled||armed||spanBlocked||inputMode==='drag')return;
+			const target=typeof doc.elementFromPoint==='function'?doc.elementFromPoint(pointer.clientX,pointer.clientY):pointer.target;
+			if(!target||!target.isConnected)return;
+			const current=capture.fromPoint(doc,{...pointer,target},spanAnchor&&spanAnchor.line);if(!current)return;
+			if(!spanAnchor){spanAnchor=current;clearHighlight();}
+			if(current.sentence!==spanAnchor.sentence){cancelSpan();return;}
+			const selected=capture.fromOffsets(doc,spanAnchor.line,Math.min(spanAnchor.offset,current.offset),Math.max(spanAnchor.offset+spanAnchor.term.length,current.offset+current.term.length));
+			if(selected)showHighlight(selected);else{clearHighlight();win.getSelection().removeAllRanges();}
 		}
 		function shift(e) {
 			if(!enabled)return;
 			if(e.key==='Shift'||e.keyCode===16){
 				if(e.type==='keydown'&&e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]'))return;
 				const held=e.type==='keydown';if(held&&shiftHeld)return;
-				shiftHeld=held;cancelHover();preview=null;lastHover=null;
-				if(shiftHeld){diagnostics.input.shiftDown++;capture.lines(doc);}
-				doc.body.classList.toggle('fg-dictionary-select',shiftHeld);if(shiftHeld&&pointer)scheduleHover(pointer);
+				shiftHeld=held;
+				if(held){cancelSpan();spanBlocked=false;diagnostics.input.shiftDown++;capture.lines(doc);doc.body.classList.add('fg-dictionary-select');updateSpan();}
+				else{
+					if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;
+					if(spanAnchor&&!armed){updateSpan();const selected=capture.fromSelection(win.getSelection(),doc);cancelSpan();if(selected){showHighlight(selected);diagnostics.hover++;lookup(selected);}}
+					doc.body.classList.remove('fg-dictionary-select');
+				}
 			}
 		}
 		function down(e) {
 			if(!enabled)return;
-			cancelHover();
+			cancelSpan();
+			spanBlocked=true;
 			diagnostics.input[e.type]=(diagnostics.input[e.type]||0)+1;
 			if(armed)return; // A pointer gesture may also emit compatibility mouse events.
 			swallowClick=false;
@@ -135,14 +136,15 @@
 		function move(e){
 			pointer={target:e.target,clientX:e.clientX,clientY:e.clientY};
 			if(armed&&anchor){if(e.type==='mousemove'&&source==='pointerdown')return;e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);return;}
-			if((e.shiftKey||shiftHeld)&&!e.buttons)scheduleHover(pointer);else cancelHover();
+			if(shiftHeld&&!e.buttons&&inputMode!=='drag'){if(!spanAnchor)updateSpan();else if(previewFrame===null)previewFrame=win.requestAnimationFrame(()=>{previewFrame=null;updateSpan();});}
 		}
 		async function up(e) {
 			if(!armed) return; armed=false;swallowClick=true;e.stopImmediatePropagation();
 			if(anchor)capture.extend(doc,anchor,e);anchor=null;
 			const selected=capture.fromSelection(win.getSelection(),doc);
 			if(!selected){diagnostics.last='未选中有效的同一行原文，请从字面拖选；也可查看本插件的运行状态。';refresh();return;}
-			await lookup(selected,'drag');
+			showHighlight(selected);
+			await lookup(selected);
 		}
 		function click(e) { if(enabled && (swallowClick || inputMode!=='hover'&&(e.shiftKey || shiftHeld)) && capture.lineForTarget(e.target)) {swallowClick=false;e.preventDefault();e.stopImmediatePropagation();} }
 		function setEnabled(value) {

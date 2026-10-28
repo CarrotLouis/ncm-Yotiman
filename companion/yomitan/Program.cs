@@ -92,7 +92,7 @@ namespace CloudmusicYomitan {
                         form.FormClosed+=(s,e)=>{ if(settings==s) settings=null; if(lookup==s) lookup=null; };
                     }
                     if(action=="warmup")await form.Warmup(Json.Text(command,"theme"));else await form.Open(command,source);
-                    Reply(file,null);
+                    Reply(file,null,action=="lookup"?form.LastMatch:null);
                 } catch(Exception error) { Reply(file,error.Message); }
                 finally { processing.Remove(file); }
             }
@@ -105,9 +105,9 @@ namespace CloudmusicYomitan {
             environment=await CoreWebView2Environment.CreateAsync(null,Path.Combine(root,"profile"),new CoreWebView2EnvironmentOptions {AreBrowserExtensionsEnabled=true});
             return environment;
         }
-        static void Reply(string file,string error) {
+        static void Reply(string file,string error,object match=null) {
             try {
-                File.WriteAllText(file+".reply.pending",Json.Encode(new {ok=error==null,error}),new UTF8Encoding(false));
+                File.WriteAllText(file+".reply.pending",Json.Encode(new {ok=error==null,error,match}),new UTF8Encoding(false));
                 File.Move(file+".reply.pending",file+".reply");
                 File.Delete(file); // requests contain one transient lyric line, not a lyric cache
                 File.Delete(file+".ready");
@@ -130,7 +130,8 @@ namespace CloudmusicYomitan {
         readonly TextBox audioField=new TextBox {Width=110,Text="SentenceAudio"};
         string extensionId,scriptId,audioPath;
         Task initializeTask;
-        Task searchTask;TaskCompletionSource<bool> pageReady;string pendingTerm;TaskCompletionSource<bool> lookupReady;
+        Task searchTask;TaskCompletionSource<bool> pageReady;string pendingTerm,pendingSentence;int pendingOffset;TaskCompletionSource<bool> lookupReady;
+        internal object LastMatch {get;private set;}
         internal DictionaryWindow(CoreWebView2Environment env,string directory,bool lookup) {
             environment=env; home=directory; isLookup=lookup;
             Text=lookup ? "Yomitan · 歌词查词" : "Yomitan · 词典与 Anki 设置";
@@ -161,10 +162,10 @@ namespace CloudmusicYomitan {
                 ClearAudio();
                 object segments=ValidateSegments(command,sentence);
                 await EnsureSearch();ApplyTheme(Json.Text(command,"theme"));
-                pendingTerm=term;lookupReady=new TaskCompletionSource<bool>();
-                string result=await view.CoreWebView2.ExecuteScriptAsync("window.NcmYotimanLookup("+Json.Encode(new {term,sentence,segments,offset,title,url,theme=Json.Text(command,"theme")})+")");
+                pendingTerm=term;pendingSentence=sentence;pendingOffset=offset;LastMatch=null;lookupReady=new TaskCompletionSource<bool>();
+                string result=await view.CoreWebView2.ExecuteScriptAsync("window.NcmYotimanLookup("+Json.Encode(new {term,sentence,segments,offset,title,url,theme=Json.Text(command,"theme"),matchMode=Json.Text(command,"matchMode")})+")");
                 if(result!="true")throw new InvalidOperationException("词典页面未就绪");
-                Reveal(source);await Task.WhenAny(lookupReady.Task,Task.Delay(8000));
+                Reveal(source);if(await Task.WhenAny(lookupReady.Task,Task.Delay(8000))!=lookupReady.Task)throw new TimeoutException("词典查询超时，请重试");await lookupReady.Task;
             }else{initializeTask=initializeTask??Initialize();await initializeTask;ApplyTheme(Json.Text(command,"theme"));view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/settings.html");Reveal();}
         }
         async Task Initialize() {
@@ -177,7 +178,7 @@ namespace CloudmusicYomitan {
             if(!extension.IsEnabled) await extension.EnableAsync(true);
             extensionId=extension.Id;
             string bridge=File.ReadAllText(Path.Combine(home,"page-bridge.js"),Encoding.UTF8).Replace("__FG_CONTEXT__",Json.Encode(new {sentence="",segments=new object[0],offset=0,title="",url="",theme="dark"}));
-            scriptId=await core.AddScriptToExecuteOnDocumentCreatedAsync(bridge);
+            scriptId=await core.AddScriptToExecuteOnDocumentCreatedAsync(File.ReadAllText(Path.Combine(home,"range-match.js"),Encoding.UTF8)+"\n"+bridge);
             core.NavigationStarting+=(s,e)=>{
                 var uri=new Uri(e.Uri);
                 if(uri.Scheme!="chrome-extension" || uri.Host!=extensionId) e.Cancel=true;
@@ -195,7 +196,18 @@ namespace CloudmusicYomitan {
                 if(!Uri.TryCreate(e.Source,UriKind.Absolute,out var source) || source.Host!=extensionId || source.AbsolutePath!="/search.html") return;
                 var request=Json.Read(e.WebMessageAsJson); object id=request.TryGetValue("id",out var value) ? value : null;
                 if(Json.Text(request,"action")=="pageReady"){pageReady?.TrySetResult(true);return;}
-                if(Json.Text(request,"action")=="lookupComplete"){if(Json.Text(request,"query")==pendingTerm)lookupReady?.TrySetResult(true);return;}
+                if(Json.Text(request,"action")=="lookupComplete"){
+                    if(Json.Text(request,"query")!=pendingTerm)return;
+                    try{
+                        if(!string.IsNullOrEmpty(Json.Text(request,"error")))throw new InvalidDataException(Json.Text(request,"error"));
+                        if(request.TryGetValue("match",out var matched)&&matched is Dictionary<string,object> match){
+                            int at=Convert.ToInt32(match["offset"]),length=Convert.ToInt32(match["length"]);string text=Json.Text(match,"text");
+                            if(at<pendingOffset||length<=0||length>pendingTerm.Length||at-pendingOffset>pendingTerm.Length-length||pendingSentence.Substring(at,length)!=text)throw new InvalidDataException("词典返回的匹配超出选区");
+                            LastMatch=new {offset=at,length,text};
+                        }
+                        lookupReady?.TrySetResult(true);
+                    }catch(Exception error){lookupReady?.TrySetException(error);}return;
+                }
                 try {
                     if(Json.Text(request,"action")!="audioForNote") return;
                     object audio=null;
