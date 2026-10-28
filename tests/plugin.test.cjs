@@ -17,7 +17,19 @@ for(const entry of manifest.injects.Main)win.eval(fs.readFileSync(path.resolve(_
  assert.deepEqual(win.NcmYotiman.track().id,'42');
  const status=await win.NcmYotiman.probe();assert(status.helperExists&&status.hasTrack);assert(!JSON.stringify(status).includes('試験曲'));
  const panel=handlers.panel();assert(panel.textContent.includes('Yomitan'));assert(panel.querySelector('input').checked);
+ win.document.body.append(panel);const mode=panel.querySelector('[data-input-mode]'),group=menu.querySelector('.rnp-group[data-tab="ncm-yotiman"]');
+ assert.equal(mode.value,'hover','Shift hover is the default for an existing enabled installation');
+ assert.equal(group.querySelector('[data-input-mode="hover"]').getAttribute('aria-pressed'),'true');
+ mode.value='drag';mode.dispatchEvent(new win.Event('change'));assert.equal(win.NcmYotiman.config.dictionaryInputMode,'drag');
+ assert.equal(group.querySelector('[data-input-mode="drag"]').getAttribute('aria-pressed'),'true');
+ group.querySelector('[data-input-mode="both"]').click();assert.equal(mode.value,'both','RNP changes also refresh the BetterNCM settings panel');
+ assert.equal(JSON.parse(win.localStorage.getItem('ncm-yotiman.config')).dictionaryInputMode,'both');
+ assert.throws(()=>win.NcmYotiman.set('dictionaryInputMode','unknown'));assert.equal(mode.value,'both');
+ assert.equal(handlers.panel(),panel,'Reuse one settings panel without accumulating subscriptions');
+ assert(!panel.querySelector('details').open);assert(!panel.textContent.includes('{sentence}'));assert(!group.textContent.includes('ShareX'));
+ const originalSettings=win.NcmYotiman.dictionary.openSettings;win.NcmYotiman.dictionary.openSettings=()=>Promise.reject(new Error('Synthetic settings error'));
+ panel.querySelector('[data-settings]').click();await new Promise(r=>setTimeout(r,0));assert(panel.querySelector('details').open,'Settings errors must remain visible with diagnostics folded');assert(panel.querySelector('[role=status]').textContent.includes('Synthetic settings error'));win.NcmYotiman.dictionary.openSettings=originalSettings;
  // No writes to the furigana config; migration never changes annotation settings.
  assert(JSON.parse(win.localStorage.getItem('jp-furigana-plus.config')).enabled);
- win.NcmYotiman.dictionary.destroy();win.close();console.log('Plugin passed: independent identity/config, old adapter handoff, RNP placement, current metadata, non-sensitive diagnostics and settings.');
+ win.NcmYotiman.dictionary.destroy();win.close();console.log('Plugin passed: independent config/migration, persisted input mode, synchronized RNP/BetterNCM choices, concise UI and folded diagnostics.');
 })().catch(e=>{console.error(e);process.exitCode=1;win.close();});

@@ -6,6 +6,7 @@
 	'use strict';
 	const TAB='ncm-yotiman';
 	const LINES=capture.LINES;
+	const INPUT_MODES=[['hover','Shift 悬停'],['drag','Shift＋左键拖选'],['both','两种均可']];
 	function quotePath(value) {
 		if(!value || /["\r\n\x00]/.test(value)) throw new Error('词典组件路径无效');
 		return '"'+value+'"';
@@ -41,20 +42,23 @@
 	}
 	function install(api,doc=document) {
 		const win=doc.defaultView,menus=new Map(); let enabled=false,armed=false,anchor=null,shiftHeld=false,source='',swallowClick=false,inflight=false,error='',disposed=false,notice=null,noticeTimer;
-		const diagnostics={down:0,selected:0,sent:0,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
+		let pointer=null,hoverPoint=null,hoverTimer=null,hoverEpoch=0,lastHover=null;
+		let inputMode=api.config().dictionaryInputMode||'hover';
+		const diagnostics={down:0,hover:0,selected:0,sent:0,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
 		const bridge=api.transport || transport(api.betterncm,api.plugin);
 		const style=doc.createElement('style');
 		style.textContent=`${LINES.split(',').map(s=>'body.fg-dictionary-select '+s+',body.fg-dictionary-select '+s+' *').join(',')} {user-select:text!important;-webkit-user-select:text!important;cursor:text!important}
 		${LINES.split(',').map(s=>'body.ncm-yotiman-enabled '+s+',body.ncm-yotiman-enabled '+s+' *').join(',')},body.ncm-yotiman-enabled .rnp-lyrics,body.ncm-yotiman-enabled .rnp-lyrics-line { -webkit-app-region:no-drag!important; }
 		body.fg-dictionary-select .fg-rt,body.fg-dictionary-select rt,body.fg-dictionary-select .rnp-karaoke-word-filler {user-select:none!important;-webkit-user-select:none!important;pointer-events:none!important}
 		[data-tab="${TAB}"] .fg-dictionary-hint {opacity:.65;font-size:13px;line-height:1.6;margin:12px 0;white-space:pre-wrap}
-		[data-tab="${TAB}"] button {border-radius:6px;padding:6px} [data-tab="${TAB}"] [role="alert"] {color:#ffb4ab}`;
+		[data-tab="${TAB}"] button {border-radius:6px;padding:6px} [data-tab="${TAB}"] [role="alert"] {color:#ffb4ab} [data-tab="${TAB}"] [hidden] {display:none!important}`;
 		doc.head.append(style);
 		function refresh() {
 			for(const {group} of menus.values()) {
 				group.querySelector('input').checked=!!api.config().dictionaryEnabled;
-				group.querySelector('[role="status"]').textContent=enabled?'按住 Shift 选择同一行中的词语，松开鼠标查词。\n'+diagnostics.last:'词典已关闭';
-				group.querySelector('[role="alert"]').textContent=error;
+				for(const button of group.querySelectorAll('[data-input-mode]')){const selected=button.dataset.inputMode===inputMode;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));}
+				const status=group.querySelector('[role="status"]');status.textContent=enabled&&diagnostics.last!=='尚未查词'?diagnostics.last:'';status.hidden=!status.textContent;
+				const alert=group.querySelector('[role="alert"]');alert.textContent=error;alert.hidden=!error;
 			}
 		}
 		async function send(action,context) {
@@ -68,43 +72,71 @@
 			}
 		}
 		function openSettings() { return send('settings'); }
-		function reset() { armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
+		function cancelHover(){clearTimeout(hoverTimer);hoverTimer=null;hoverPoint=null;hoverEpoch++;}
+		function reset() { cancelHover();pointer=null;lastHover=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
+		async function lookup(selected,mode,valid=()=>true){
+			if(!selected||inflight)return;
+			diagnostics.selected++;inflight=true;
+			try {
+				const track=await api.track();if(!enabled||!valid())return;
+				if(!track||!track.id)throw new Error('未取得歌曲 ID，请打开歌曲播放页后重试');
+				diagnostics.sent++;diagnostics.last=mode==='hover'?'正在悬停查词…':'正在查词…';refresh();
+				await send('lookup',{...selected,title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});
+				diagnostics.last='查词窗口已打开';refresh();
+			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;}
+		}
+		function scheduleHover(point){
+			if(inputMode==='drag'||!point||armed||inflight){cancelHover();return;}
+			if(hoverPoint&&hoverPoint.target===point.target&&Math.abs(hoverPoint.clientX-point.clientX)<3&&Math.abs(hoverPoint.clientY-point.clientY)<3)return;
+			cancelHover();hoverPoint=point;const epoch=hoverEpoch;
+			hoverTimer=setTimeout(()=>{
+				hoverTimer=null;if(epoch!==hoverEpoch||!enabled||armed||inflight)return;
+				const target=typeof doc.elementFromPoint==='function'?doc.elementFromPoint(point.clientX,point.clientY):point.target;
+				if(!target||!target.isConnected)return;
+				const selected=capture.fromPoint(doc,{...point,target});if(!selected)return;
+				const line=capture.lineForTarget(target);
+				if(lastHover&&lastHover.line===line&&lastHover.offset===selected.offset&&lastHover.term===selected.term&&lastHover.sentence===selected.sentence)return;
+				lastHover={line,offset:selected.offset,term:selected.term,sentence:selected.sentence};diagnostics.hover++;
+				lookup(selected,'hover',()=>epoch===hoverEpoch);
+			},180);
+		}
 		function shift(e) {
 			if(!enabled)return;
 			if(e.key==='Shift'||e.keyCode===16){
 				if(e.type==='keydown'&&e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]'))return;
-				shiftHeld=e.type==='keydown';if(shiftHeld){diagnostics.input.shiftDown++;capture.lines(doc);}doc.body.classList.toggle('fg-dictionary-select',shiftHeld);
+				const held=e.type==='keydown';if(held&&shiftHeld)return;
+				shiftHeld=held;cancelHover();lastHover=null;
+				if(shiftHeld){diagnostics.input.shiftDown++;capture.lines(doc);}
+				doc.body.classList.toggle('fg-dictionary-select',shiftHeld);if(shiftHeld&&pointer)scheduleHover(pointer);
 			}
 		}
 		function down(e) {
 			if(!enabled)return;
+			cancelHover();
 			diagnostics.input[e.type]=(diagnostics.input[e.type]||0)+1;
 			if(armed)return; // A pointer gesture may also emit compatibility mouse events.
 			swallowClick=false;
 			const line=capture.lineForTarget(e.target),shifted=!!(e.shiftKey||shiftHeld);
 			if(line||shifted){const target=e.target.nodeType===1?e.target:e.target.parentElement;diagnostics.lastInput={type:e.type,shift:!!e.shiftKey,shiftHeld,button:e.button,matched:!!line,target:target?(target.tagName+'.'+[...target.classList].slice(0,4).join('.')).slice(0,200):'unknown'};}
-			if(!shifted||e.button!==0||!line)return;
+			if(inputMode==='hover'||!shifted||e.button!==0||!line)return;
 			win.getSelection().removeAllRanges(); // Shift must not extend a previous lookup's selection.
 			diagnostics.down++;doc.body.classList.add('fg-dictionary-select');capture.mark(line);anchor=capture.begin(doc,e,line);
 			armed=true;source=e.type;e.stopImmediatePropagation();
 			if(anchor)e.preventDefault(); // Own the range when the client suppresses native text selection.
 		}
-		function move(e){if(armed&&anchor){if(e.type==='mousemove'&&source==='pointerdown')return;e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);}}
+		function move(e){
+			pointer={target:e.target,clientX:e.clientX,clientY:e.clientY};
+			if(armed&&anchor){if(e.type==='mousemove'&&source==='pointerdown')return;e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);return;}
+			if((e.shiftKey||shiftHeld)&&!e.buttons)scheduleHover(pointer);else cancelHover();
+		}
 		async function up(e) {
 			if(!armed) return; armed=false;swallowClick=true;e.stopImmediatePropagation();
 			if(anchor)capture.extend(doc,anchor,e);anchor=null;
 			const selected=capture.fromSelection(win.getSelection(),doc);
 			if(!selected){diagnostics.last='未选中有效的同一行原文，请从字面拖选；也可查看本插件的运行状态。';refresh();return;}
-			diagnostics.selected++;if(inflight)return;
-			inflight=true;
-			try {
-				const track=await api.track(); if(!enabled)return;if(!track || !track.id)throw new Error('未取得歌曲 ID，请打开歌曲播放页后重试');
-				diagnostics.sent++;diagnostics.last='正在查词…';refresh();
-				await send('lookup',{...selected,title:track.title || '',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});
-				diagnostics.last='查词窗口已打开';refresh();
-			} catch(e) { error=e.message;diagnostics.last='查词失败：'+e.message;refresh(); } finally { inflight=false; }
+			await lookup(selected,'drag');
 		}
-		function click(e) { if(enabled && (e.shiftKey || shiftHeld || swallowClick) && capture.lineForTarget(e.target)) {swallowClick=false;e.preventDefault();e.stopImmediatePropagation();} }
+		function click(e) { if(enabled && (swallowClick || inputMode!=='hover'&&(e.shiftKey || shiftHeld)) && capture.lineForTarget(e.target)) {swallowClick=false;e.preventDefault();e.stopImmediatePropagation();} }
 		function setEnabled(value) {
 			const next=!!value; if(next===enabled) {refresh();return;}
 			enabled=next; reset();
@@ -130,7 +162,7 @@
 				tab.className='rnp-settings-menu-tab';tab.dataset.tab=TAB;tab.textContent='词典';tab.tabIndex=0;tab.setAttribute('role','button');
 				group.className='rnp-group';group.dataset.tab=TAB;
 				const id='fg-dictionary-'+Math.random().toString(36).slice(2);
-				group.innerHTML='<div class="rnp-group-title">词典</div><div class="rnp-checkbox-wrapper"><input type="checkbox" class="rnp-checkbox" id="'+id+'"><label class="rnp-checkbox-label" for="'+id+'">启用 Yomitan 词典</label></div><button type="button" class="rnp-select-group-btn">打开 Yomitan 设置</button><p class="fg-dictionary-hint" role="status"></p><p class="fg-dictionary-hint">在独立设置窗口中导入词典、配置 Anki。Anki 的句子字段使用 {sentence}；音频可在查词窗口附加 ShareX 已录制的文件。</p><p class="fg-dictionary-hint" role="alert"></p>';
+				group.innerHTML='<div class="rnp-group-title">词典</div><div class="rnp-checkbox-wrapper"><input type="checkbox" class="rnp-checkbox" id="'+id+'"><label class="rnp-checkbox-label" for="'+id+'">启用词典</label></div><div class="rnp-select-group-wrapper"><div class="rnp-select-group-label">查词方式</div><div class="rnp-select-group" role="group" aria-label="查词方式">'+INPUT_MODES.map(([value,title])=>'<button type="button" class="rnp-select-group-btn" data-input-mode="'+value+'" aria-pressed="false">'+title+'</button>').join('')+'</div></div><button type="button" class="rnp-select-group-btn" data-settings>Yomitan 设置</button><p class="fg-dictionary-hint" role="status" hidden></p><p class="fg-dictionary-hint" role="alert" hidden></p>';
 				anchor.after(tab);section.after(group);
 				const inner=section.parentElement,tabs=tab.parentElement;let frame=null;
 				function highlight(){frame=null;const groups=[...inner.children].filter(n=>n.classList.contains('rnp-group'));let active=groups[0];for(const item of groups)if(item.offsetTop<=inner.scrollTop+32)active=item;if(inner.scrollHeight>inner.clientHeight&&inner.scrollTop+inner.clientHeight>=inner.scrollHeight-1)active=groups[groups.length-1];if(active)for(const item of tabs.children)if(item.classList.contains('rnp-settings-menu-tab'))item.classList.toggle('active',item.dataset.tab===active.dataset.tab);}
@@ -139,7 +171,8 @@
 				const navigate=()=>{inner.scrollTo({top:group.offsetTop+5,behavior:'smooth'});schedule();};
 				tab.onclick=navigate;tab.onkeydown=e=>{if(e.key==='Enter'||e.key===' ') {e.preventDefault();navigate();}};
 				group.querySelector('input').onchange=e=>api.set('dictionaryEnabled',e.target.checked);
-				group.querySelector('button').onclick=()=>openSettings().catch(()=>{});
+				for(const button of group.querySelectorAll('[data-input-mode]'))button.onclick=()=>api.set('dictionaryInputMode',button.dataset.inputMode);
+				group.querySelector('[data-settings]').onclick=()=>openSettings().catch(()=>{});
 			}
 			refresh();
 		}
@@ -149,9 +182,9 @@
 			if(records.some(r=>[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&(n.matches(selector)||n.querySelector(selector))))) scan();
 		});
 		observer.observe(doc.body,{childList:true,subtree:true});
-		const unsubscribe=api.subscribe(()=>setEnabled(api.config().dictionaryEnabled));
+		const unsubscribe=api.subscribe(()=>{const next=api.config().dictionaryInputMode||'hover';if(next!==inputMode){inputMode=next;reset();}setEnabled(api.config().dictionaryEnabled);});
 		setEnabled(api.config().dictionaryEnabled);scan();
-		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics,input:{...diagnostics.input},active:enabled}),status:()=>error,destroy(){disposed=true;setEnabled(false);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
+		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics,input:{...diagnostics.input},inputMode,active:enabled}),status:()=>error,destroy(){disposed=true;setEnabled(false);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
 	}
-	return {install,selectionContext:capture.fromSelection,transport,quotePath};
+	return {INPUT_MODES,install,selectionContext:capture.fromSelection,transport,quotePath};
 });

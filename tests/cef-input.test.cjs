@@ -8,7 +8,7 @@ const tick=()=>new Promise(r=>setTimeout(r,20));
  // CEF can expose the constructor while its embedder sends mouse events only.
  win.PointerEvent=win.MouseEvent;const sent=[];
  doc.caretRangeFromPoint=x=>{const r=doc.createRange();r.setStart(text,x<5?0:2);r.collapse(true);return r;};
- const adapter=install({config:()=>({dictionaryEnabled:true}),subscribe:()=>()=>{},set(){},track:()=>({id:'42'}),transport:{send:async(action,context)=>{if(action==='lookup')sent.push(context);}}},doc);
+ const adapter=install({config:()=>({dictionaryEnabled:true,dictionaryInputMode:'drag'}),subscribe:()=>()=>{},set(){},track:()=>({id:'42'}),transport:{send:async(action,context)=>{if(action==='lookup')sent.push(context);}}},doc);
  function event(type,x,shiftKey=true,target=line){target.dispatchEvent(new win.MouseEvent(type,{bubbles:true,cancelable:true,button:0,clientX:x,clientY:10,shiftKey}));}
  event('mousedown',0);event('mousemove',10);event('mouseup',10);await tick();assert.equal(sent.length,1,'Mouse input must work even with a PointerEvent constructor');
  event('pointerdown',0);event('mousedown',0);event('pointermove',10);event('mousemove',10);event('pointerup',10);event('mouseup',10);await tick();assert.equal(sent.length,2,'Compatibility events must not submit a second lookup');

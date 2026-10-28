@@ -111,7 +111,7 @@ namespace CloudmusicYomitan {
         internal DictionaryWindow(CoreWebView2Environment env,string directory,bool lookup) {
             environment=env; home=directory; isLookup=lookup;
             Text=lookup ? "Yomitan · 歌词查词" : "Yomitan · 词典与 Anki 设置";
-            Width=lookup ? 700 : 1100; Height=800;
+            Width=lookup ? 700 : 1100; Height=800; TopMost=lookup;
             Controls.Add(view);
             if(lookup) {
                 var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(6)};
@@ -122,8 +122,15 @@ namespace CloudmusicYomitan {
                 bar.Controls.Add(audioField); bar.Controls.Add(clear); bar.Controls.Add(audioStatus); Controls.Add(bar);
             }
         }
+        internal void Reveal() {
+            // Lookup must remain visible while the user interacts with the music
+            // client. Reapply this for reused/minimized windows on every lookup.
+            TopMost=isLookup;
+            if(WindowState==FormWindowState.Minimized) WindowState=FormWindowState.Normal;
+            Show(); ShowWindow(Handle,5); BringToFront(); Activate();
+        }
         internal async Task Open(Dictionary<string,object> command) {
-            Show(); if(WindowState==FormWindowState.Minimized) WindowState=FormWindowState.Normal;
+            Reveal();
             initializeTask=initializeTask ?? Initialize(); await initializeTask;
             string page="settings.html";
             if(isLookup) {
@@ -137,10 +144,10 @@ namespace CloudmusicYomitan {
                 scriptId=await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(bridge);
                 page="search.html?query="+Uri.EscapeDataString(term)+"&full="+Uri.EscapeDataString(sentence)+"&offset="+offset+"&type=terms&wildcards=off";
             }
-            view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/"+page); Activate();
+            view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/"+page);
             // BetterNCM launches helpers without a console; explicitly reveal the
             // requested document window even if STARTUPINFO initially hid it.
-            ShowWindow(Handle,5); Activate();
+            Reveal();
         }
         async Task Initialize() {
             string extensionDirectory=PrepareExtensionDirectory();

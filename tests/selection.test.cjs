@@ -7,7 +7,7 @@ function choose(a,from,b,to){const range=doc.createRange();range.setStart(a,from
 const snapshot=capture.snapshot(line);assert.equal(snapshot.sentence,'私は戀人と歌う。');assert(snapshot.segments.some(s=>s.text==='戀人'&&s.reading==='あなた'));assert(!JSON.stringify(snapshot).includes('こいびと'));
 const context=capture.fromSelection(choose(start,0,end,1),doc);assert.equal(context.offset,5);assert.equal(context.term,'歌う');assert.equal(context.sentence,'私は戀人と歌う。');assert.deepEqual(context.segments,snapshot.segments);
 assert.equal(capture.fromSelection(choose(start,0,doc.querySelector('.rnp-lyrics-line-original').firstChild,1),doc),null);
-const config={dictionaryEnabled:false},subscribers=new Set(),sent=[];
+const config={dictionaryEnabled:false,dictionaryInputMode:'drag'},subscribers=new Set(),sent=[];
 const api={config:()=>config,set:(key,value)=>{config[key]=value;for(const f of subscribers)f();},subscribe:f=>{subscribers.add(f);return()=>subscribers.delete(f);},track:()=>({id:'42',title:'試験曲'}),transport:{send:async(action,ctx)=>sent.push({action,...ctx})}};
 const adapter=install(api,doc);const tick=()=>new Promise(r=>setTimeout(r,20));
 function event(type,x,shiftKey=true){song.dispatchEvent(new dom.window.MouseEvent(type,{bubbles:true,cancelable:true,button:0,buttons:1,clientX:x,clientY:10,shiftKey}));}

@@ -1,13 +1,16 @@
 # ncm-Yotiman
 
-网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，按住 **Shift 拖选歌词**，松开鼠标打开独立查词窗口；通过 Yomitan 原生 Anki integration 制卡，可附加 ShareX 录制的音频。
+网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，按住 **Shift，将鼠标悬停在歌词原文上**即可打开独立查词窗口，也支持 Shift 配合鼠标左键拖选；通过 Yomitan 原生 Anki integration 制卡，可附加 ShareX 录制的音频。
 
-**当前为 0.1.1 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
+**当前为 0.1.2 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
 
 ## 功能
 
 - 在 RefinedNowPlayingNext 3.0.2 设置中增加“词典”，优先放在“注音”后；没有注音插件时放在“歌词”后。
+- 两处设置同步提供“查词方式”：Shift 悬停（默认）、Shift＋左键拖选、两种均可。切换立即生效并保存在独立配置内。
 - 开关控制按需查词；独立窗口使用原版 Yomitan 的词典导入、设置和 Anki 功能。
+- Shift 悬停约 0.2 秒查词，无需点击鼠标；鼠标已经位于原文上时直接按 Shift 也可触发。当前位置后的最多 32 个字符交给 Yomitan 做词典匹配，整行原文和当前读音独立保留作制卡上下文。
+- 查词窗口保持置顶，每次查词都会恢复并前置，不会被后续点击的网易云主窗口遮盖；设置窗口使用普通窗口行为。
 - 同时监听鼠标和指针事件并对一次手势去重，不按 `PointerEvent` 构造函数是否存在来猜测 CEF 的输入方式。使用坐标对应的 DOM Range 处理拖选，必要时以字形矩形定位；拦截同次点击，防止跳转播放进度。
 - 捕获整行原文时同时快照当前振假名，读取人工纠音后的当前读音，跳过划掉的旧读音、译文、隐藏括号和逐字高亮副本。
 - `{sentence}` 和 `{sentence-furigana}` 制卡时继承快照中的振假名；`{sentence-furigana-plain}` 可用于 Anki 方括号注音。查词词条本身仍使用词典原始释义。
@@ -27,12 +30,12 @@
 
 1. 在播放页“词典”开启功能，点击“打开 Yomitan 设置”。
 2. 在 Dictionaries 中导入 Yomitan 格式 ZIP，并确认词典已启用。
-3. 按住 Shift，从歌词的**原文字面**拖选同一行中的词语，松开鼠标。
+3. 默认按住 Shift，把鼠标停在歌词的**原文字面**上约 0.2 秒。需要精确选择时，在“查词方式”中改为“Shift＋左键拖选”或“两种均可”，拖选同一行中的词语后松开鼠标。
 4. 如果制卡，在 Yomitan → Anki 中启用连接，再进入 Configure Anki flashcards，**选牌组、笔记类型，映射字段**。仅打开 Enable Anki integration 还不能制卡。
 5. 句子字段可用 `{sentence}` 或 `{sentence-furigana}`，歌曲信息用 `{document-title}`，释义可用 `{glossary}`。字段名取决于自己的笔记类型。
 6. 附加歌曲音频时，先用 ShareX 录好片段，在查词窗口选择文件，并填写实际音频字段名。默认值 `SentenceAudio` 只是示例，笔记中必须有同名字段。支持 MP3/WAV/OGG/M4A/AAC/FLAC/WebM，单文件最多 20 MB。
 
-同一次拖选保留当时整行文字和读音，之后歌词滚动或切歌不会改变这张卡片的上下文。再次查词会清除上次选择的音频。
+同一次查词保留当时整行文字和读音，之后歌词滚动或切歌不会改变这张卡片的上下文。再次查词会清除上次选择的音频。悬停等待期间松开 Shift、切走窗口或关闭功能会取消该次查词；没有按住 Shift 时不扫描文字，也不启动辅助进程。
 
 ## 与早期合并实验版的关系
 
@@ -54,18 +57,18 @@ powershell -NoProfile -File tools/build-yomitan.ps1 -YomitanArchive C:\Downloads
 npm run build
 ```
 
-生成 `builds/ncm-yotiman-0.1.1.plugin`。构建不会自动安装、重启网易云或发布 Release。
+生成 `builds/ncm-yotiman-0.1.2.plugin`。构建不会自动安装、重启网易云或发布 Release。
 仓库仅包含源码和测试，不包含第三方词典、用户 profile、Anki 卡片和运行时歌词。
 
 ## 故障定位
 
-在 BetterNCM 的本插件设置页点击“运行检查”：
+在 BetterNCM 的本插件设置页展开“运行诊断”，点击“运行检查”：
 
 - `helperExists: false`：只安装了源码，未构建原生组件。
 - `hasTrack: false`：未取得当前歌曲信息；打开播放页后再试。
-- `gesture.down: 0`：拖选没有进入事件处理，检查功能开关和目标是否为原文。
+- `gesture.hover`：成功取得悬停查词文本的次数。只使用 Shift 悬停时 `down: 0` 正常；`down` 只统计按住鼠标左键开始的拖选。
 - `gesture.input`：分别统计实际收到的 `pointerdown`、`mousedown` 和 Shift 按键；`lastInput` 显示最近一次歌词命中的目标类名及修饰键状态，不包含歌词正文。
-- `selected: 0`：没有形成有效的同一行选区；从字面开始拖，不跨译文或相邻行。
+- `selected: 0`：没有取得有效原文；悬停时应位于字面，拖选时不要跨译文或相邻行。
 - `sent` 增加但没有窗口：查看返回错误；设置页必须能打开，系统也需要 WebView2 Runtime。
 - 有查词窗口但没有释义：在独立 Yomitan 设置中检查词典是否已导入并启用。
 - 有释义但不能制卡：检查 AnkiConnect、牌组、笔记类型和字段映射；音频字段名必须存在。
@@ -87,6 +90,14 @@ Windows 原生测试已验证：
 可通过 `companion/pointer-smoke/Pointer.csproj` 重跑浏览器拖选回归，通过 `companion/yomitan-smoke/Smoke.csproj` 和 `tests/yomitan-anki-mock.cjs` 重跑原生集成测试。测试数据必须保存在仓库外的专用目录。
 
 完整客户端鼠标交互仍需在实际网易云/RNP 中验证；该版本不宣称已通过所有环境验证。
+
+### 0.1.2：Shift 悬停查词
+
+补上与浏览器默认用法一致的 Shift 悬停查词，并作为默认方式。0.1.1 只处理鼠标按下后拖选，因此只按 Shift 移动鼠标时不会触发查词。两处设置同步提供悬停、拖选或两种均可，移除界面上的长篇说明并折叠诊断入口。修正鼠标位于汉字右半边时光标边界可能跳到下一个字的问题。相同位置的鼠标/指针双事件及小幅抖动会合并，Shift 自动重复按键也不会重复遍历歌词。
+
+查词窗口同时改为置顶，并在重复查词时恢复最小化的窗口、再次前置。可用 `companion/window-smoke/Window.csproj` 验证原生窗口层级及恢复行为。
+
+测试覆盖无鼠标按键的悬停、鼠标静止时按 Shift、松开/失焦/关闭取消、定位 API 不可用、人工纠音快照，以及原有拖选。词典、Anki 设置和现有数据目录继续使用。
 
 ### 0.1.1：网易云内拖选兼容
 
