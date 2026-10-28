@@ -52,6 +52,7 @@ internal static class SmokeRunner {
                         const string sentence="彼は魔物に成り果てる。";int at=sentence.IndexOf(selected,StringComparison.Ordinal);
                         var range=new Dictionary<string,object>{{"term",selected},{"sentence",sentence},{"offset",at},{"title","Synthetic"},{"url","https://music.163.com/song?id=42"},{"matchMode","longest-in-range"}};
                         anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(range,anchor.Handle);
+                        if(WindowPolicy.GetForegroundWindow()!=anchor.Handle)throw new Exception("Real dictionary lookup stole the next Shift from the lyric window");
                         string match=Json.Encode(window.LastMatch);write("RANGE "+selected+" "+match+" MS "+startup.ElapsedMilliseconds);
                         var matched=Json.Read(match);int offset=Convert.ToInt32(matched["offset"]),length=Convert.ToInt32(matched["length"]);
                         if(offset<at||offset+length>at+selected.Length)throw new Exception("Dictionary match escaped the selected range");
@@ -75,6 +76,7 @@ internal static class SmokeRunner {
                     typeof(DictionaryWindow).GetField("audioPath",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(window,wav);
                     await core.ExecuteScriptAsync("document.querySelector('[data-action=save-note]').click()");await Task.Delay(7000);
                     using(var image=File.Create(Path.Combine(args[0],"lookup-render.png")))await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,image);
+                    write("PASS real Yomitan window preserved lyric keyboard focus across consecutive lookups");
                     write("DONE");
                 }
             }catch(Exception error){write("FAIL "+error);}

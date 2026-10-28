@@ -121,6 +121,7 @@ namespace CloudmusicYomitan {
     }
     internal sealed class DictionaryWindow : Form {
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr handle,int command);
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr handle,IntPtr after,int x,int y,int width,int height,uint flags);
         [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
         readonly WebView2 view=new WebView2 {Dock=DockStyle.Fill};
         readonly CoreWebView2Environment environment;
@@ -139,11 +140,19 @@ namespace CloudmusicYomitan {
             Controls.Add(view);
             if(lookup)FormClosing+=(s,e)=>{if(e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}};
         }
+        protected override bool ShowWithoutActivation => isLookup;
         internal void Reveal(IntPtr source=default(IntPtr)) {
             if(isLookup&&(source==IntPtr.Zero||WindowPolicy.GetForegroundWindow()!=source||WindowPolicy.IsIconic(source)))return;
-            TopMost=false;
+            if(isLookup){
+                // Keep Shift events in the lyric window. An owned popup can be
+                // above its client without becoming the keyboard input target.
+                if(!Visible)Show(new WindowPolicy.OwnerWindow(source));
+                ShowWindow(Handle,4); // SW_SHOWNOACTIVATE also restores a minimized popup.
+                SetWindowPos(Handle,IntPtr.Zero,0,0,0,0,0x0001|0x0002|0x0010|0x0200); // NOSIZE | NOMOVE | NOACTIVATE | NOOWNERZORDER
+                return;
+            }
             if(WindowState==FormWindowState.Minimized) WindowState=FormWindowState.Normal;
-            if(!Visible){if(isLookup)Show(new WindowPolicy.OwnerWindow(source));else Show();}
+            if(!Visible)Show();
             ShowWindow(Handle,5);BringToFront();Activate();
         }
         internal async Task Warmup(string theme){ApplyTheme(theme);await EnsureSearch();}
