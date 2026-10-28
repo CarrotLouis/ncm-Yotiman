@@ -2,13 +2,13 @@
 
 网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，按住 **Shift 拖选歌词**，松开鼠标打开独立查词窗口；通过 Yomitan 原生 Anki integration 制卡，可附加 ShareX 录制的音频。
 
-**当前为 0.1.0 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
+**当前为 0.1.1 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
 
 ## 功能
 
 - 在 RefinedNowPlayingNext 3.0.2 设置中增加“词典”，优先放在“注音”后；没有注音插件时放在“歌词”后。
 - 开关控制按需查词；独立窗口使用原版 Yomitan 的词典导入、设置和 Anki 功能。
-- 用坐标对应的 DOM Range 处理 Shift 拖选，减少客户端禁止原生文字选择造成的失败；拦截同次点击，防止跳转播放进度。
+- 同时监听鼠标和指针事件并对一次手势去重，不按 `PointerEvent` 构造函数是否存在来猜测 CEF 的输入方式。使用坐标对应的 DOM Range 处理拖选，必要时以字形矩形定位；拦截同次点击，防止跳转播放进度。
 - 捕获整行原文时同时快照当前振假名，读取人工纠音后的当前读音，跳过划掉的旧读音、译文、隐藏括号和逐字高亮副本。
 - `{sentence}` 和 `{sentence-furigana}` 制卡时继承快照中的振假名；`{sentence-furigana-plain}` 可用于 Anki 方括号注音。查词词条本身仍使用词典原始释义。
 - 手动选择 ShareX 已录制的音频，填写 Anki 音频字段名；点击 Yomitan 添加按钮时才上传。不自动录音、不读取剪贴板和 ShareX 任务。
@@ -54,7 +54,7 @@ powershell -NoProfile -File tools/build-yomitan.ps1 -YomitanArchive C:\Downloads
 npm run build
 ```
 
-生成 `builds/ncm-yotiman-0.1.0.plugin`。构建不会自动安装、重启网易云或发布 Release。
+生成 `builds/ncm-yotiman-0.1.1.plugin`。构建不会自动安装、重启网易云或发布 Release。
 仓库仅包含源码和测试，不包含第三方词典、用户 profile、Anki 卡片和运行时歌词。
 
 ## 故障定位
@@ -64,6 +64,7 @@ npm run build
 - `helperExists: false`：只安装了源码，未构建原生组件。
 - `hasTrack: false`：未取得当前歌曲信息；打开播放页后再试。
 - `gesture.down: 0`：拖选没有进入事件处理，检查功能开关和目标是否为原文。
+- `gesture.input`：分别统计实际收到的 `pointerdown`、`mousedown` 和 Shift 按键；`lastInput` 显示最近一次歌词命中的目标类名及修饰键状态，不包含歌词正文。
 - `selected: 0`：没有形成有效的同一行选区；从字面开始拖，不跨译文或相邻行。
 - `sent` 增加但没有窗口：查看返回错误；设置页必须能打开，系统也需要 WebView2 Runtime。
 - 有查词窗口但没有释义：在独立 Yomitan 设置中检查词典是否已导入并启用。
@@ -86,6 +87,12 @@ Windows 原生测试已验证：
 可通过 `companion/pointer-smoke/Pointer.csproj` 重跑浏览器拖选回归，通过 `companion/yomitan-smoke/Smoke.csproj` 和 `tests/yomitan-anki-mock.cjs` 重跑原生集成测试。测试数据必须保存在仓库外的专用目录。
 
 完整客户端鼠标交互仍需在实际网易云/RNP 中验证；该版本不宣称已通过所有环境验证。
+
+### 0.1.1：网易云内拖选兼容
+
+针对“歌词已识别、功能已开启，但 `gesture.down` 始终为 0”的反馈，改为同时监听两类输入事件，兼容 CEF 暴露 `PointerEvent` 但只派发鼠标事件的情况。补充 Shift 按键状态跟踪、原生窗口非拖动区域、RNP 行容器及 Plus 已标注行的识别。光标定位 API 不能使用时，按原文字形矩形定位，并在一次手势内缓存测量结果。
+
+浏览器回归覆盖构造函数存在但只发送鼠标事件、双事件去重、修饰键标记缺失、光标定位 API 不可用和未知类名的原生注音布局。设置页支持复制检查结果。0.1.0 的词典、Anki 设置与数据目录继续使用。
 
 ## 许可
 

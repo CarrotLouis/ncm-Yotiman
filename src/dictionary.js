@@ -40,11 +40,12 @@
 		return {send};
 	}
 	function install(api,doc=document) {
-		const win=doc.defaultView,menus=new Map(); let enabled=false,armed=false,anchor=null,swallowClick=false,inflight=false,error='',disposed=false,notice=null,noticeTimer;
-		const diagnostics={down:0,selected:0,sent:0,last:'尚未查词'};
+		const win=doc.defaultView,menus=new Map(); let enabled=false,armed=false,anchor=null,shiftHeld=false,source='',swallowClick=false,inflight=false,error='',disposed=false,notice=null,noticeTimer;
+		const diagnostics={down:0,selected:0,sent:0,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
 		const bridge=api.transport || transport(api.betterncm,api.plugin);
 		const style=doc.createElement('style');
-		style.textContent=`${LINES.split(',').map(s=>'body.fg-dictionary-select '+s+',body.fg-dictionary-select '+s+' *').join(',')} {user-select:text!important;-webkit-user-select:text!important;cursor:text!important;-webkit-app-region:no-drag!important}
+		style.textContent=`${LINES.split(',').map(s=>'body.fg-dictionary-select '+s+',body.fg-dictionary-select '+s+' *').join(',')} {user-select:text!important;-webkit-user-select:text!important;cursor:text!important}
+		${LINES.split(',').map(s=>'body.ncm-yotiman-enabled '+s+',body.ncm-yotiman-enabled '+s+' *').join(',')},body.ncm-yotiman-enabled .rnp-lyrics,body.ncm-yotiman-enabled .rnp-lyrics-line { -webkit-app-region:no-drag!important; }
 		body.fg-dictionary-select .fg-rt,body.fg-dictionary-select rt,body.fg-dictionary-select .rnp-karaoke-word-filler {user-select:none!important;-webkit-user-select:none!important;pointer-events:none!important}
 		[data-tab="${TAB}"] .fg-dictionary-hint {opacity:.65;font-size:13px;line-height:1.6;margin:12px 0;white-space:pre-wrap}
 		[data-tab="${TAB}"] button {border-radius:6px;padding:6px} [data-tab="${TAB}"] [role="alert"] {color:#ffb4ab}`;
@@ -67,20 +68,28 @@
 			}
 		}
 		function openSettings() { return send('settings'); }
-		function reset() { armed=false;anchor=null;swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
+		function reset() { armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
 		function shift(e) {
-			if(!enabled || e.target.closest && e.target.closest('input,textarea,[contenteditable="true"]')) return;
-			if(e.key==='Shift') doc.body.classList.toggle('fg-dictionary-select',e.type==='keydown');
+			if(!enabled)return;
+			if(e.key==='Shift'||e.keyCode===16){
+				if(e.type==='keydown'&&e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]'))return;
+				shiftHeld=e.type==='keydown';if(shiftHeld){diagnostics.input.shiftDown++;capture.lines(doc);}doc.body.classList.toggle('fg-dictionary-select',shiftHeld);
+			}
 		}
 		function down(e) {
+			if(!enabled)return;
+			diagnostics.input[e.type]=(diagnostics.input[e.type]||0)+1;
+			if(armed)return; // A pointer gesture may also emit compatibility mouse events.
 			swallowClick=false;
-			if(!enabled || !e.shiftKey || e.button!==0 || !e.target.closest(LINES)) return;
+			const line=capture.lineForTarget(e.target),shifted=!!(e.shiftKey||shiftHeld);
+			if(line||shifted){const target=e.target.nodeType===1?e.target:e.target.parentElement;diagnostics.lastInput={type:e.type,shift:!!e.shiftKey,shiftHeld,button:e.button,matched:!!line,target:target?(target.tagName+'.'+[...target.classList].slice(0,4).join('.')).slice(0,200):'unknown'};}
+			if(!shifted||e.button!==0||!line)return;
 			win.getSelection().removeAllRanges(); // Shift must not extend a previous lookup's selection.
-			diagnostics.down++;doc.body.classList.add('fg-dictionary-select');anchor=capture.begin(doc,e);
-			armed=true;e.stopImmediatePropagation();
+			diagnostics.down++;doc.body.classList.add('fg-dictionary-select');capture.mark(line);anchor=capture.begin(doc,e,line);
+			armed=true;source=e.type;e.stopImmediatePropagation();
 			if(anchor)e.preventDefault(); // Own the range when the client suppresses native text selection.
 		}
-		function move(e){if(armed&&anchor){e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);}}
+		function move(e){if(armed&&anchor){if(e.type==='mousemove'&&source==='pointerdown')return;e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);}}
 		async function up(e) {
 			if(!armed) return; armed=false;swallowClick=true;e.stopImmediatePropagation();
 			if(anchor)capture.extend(doc,anchor,e);anchor=null;
@@ -95,16 +104,16 @@
 				diagnostics.last='查词窗口已打开';refresh();
 			} catch(e) { error=e.message;diagnostics.last='查词失败：'+e.message;refresh(); } finally { inflight=false; }
 		}
-		function click(e) { if(enabled && (e.shiftKey || swallowClick) && e.target.closest(LINES)) {swallowClick=false;e.preventDefault();e.stopImmediatePropagation();} }
+		function click(e) { if(enabled && (e.shiftKey || shiftHeld || swallowClick) && capture.lineForTarget(e.target)) {swallowClick=false;e.preventDefault();e.stopImmediatePropagation();} }
 		function setEnabled(value) {
 			const next=!!value; if(next===enabled) {refresh();return;}
 			enabled=next; reset();
+			doc.body.classList.toggle('ncm-yotiman-enabled',enabled);if(enabled)capture.lines(doc);
 			for(const [type,fn] of [['keydown',shift],['keyup',shift]]) win[enabled?'addEventListener':'removeEventListener'](type,fn,true);
 			// Window capture precedes RNP's document/React click-to-seek handlers.
-			// pointerdown preventDefault in the host suppresses compatibility mouse
-			// events; use the pointer family when supported, and mouse only on old CEF.
-			const pointer='PointerEvent' in win;
-			for(const [type,fn] of [[pointer?'pointerdown':'mousedown',down],[pointer?'pointermove':'mousemove',move],[pointer?'pointerup':'mouseup',up],['click',click]]) win[enabled?'addEventListener':'removeEventListener'](type,fn,true);
+			// Some CEF hosts expose PointerEvent but deliver mouse events only. Listen
+			// to both streams and deduplicate a gesture instead of probing constructors.
+			for(const [type,fn] of [['pointerdown',down],['pointermove',move],['pointerup',up],['mousedown',down],['mousemove',move],['mouseup',up],['click',click]]) win[enabled?'addEventListener':'removeEventListener'](type,fn,true);
 			win[enabled?'addEventListener':'removeEventListener']('blur',reset);
 			if(!enabled) send('shutdown').catch(()=>{});
 			refresh();
@@ -135,13 +144,14 @@
 			refresh();
 		}
 		const observer=new win.MutationObserver(records=>{
+			if(enabled)for(const record of records)for(const node of record.addedNodes)if(node.nodeType===1){if(node.matches('.fg-line'))capture.mark(capture.lineForTarget(node));for(const wrap of node.querySelectorAll('.fg-line'))capture.mark(capture.lineForTarget(wrap));}
 			const selector='.rnp-settings-menu,.rnp-settings-menu-tabs,.rnp-settings-menu-inner,[data-tab="jp-furigana-plus"]';
 			if(records.some(r=>[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&(n.matches(selector)||n.querySelector(selector))))) scan();
 		});
 		observer.observe(doc.body,{childList:true,subtree:true});
 		const unsubscribe=api.subscribe(()=>setEnabled(api.config().dictionaryEnabled));
 		setEnabled(api.config().dictionaryEnabled);scan();
-		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics}),status:()=>error,destroy(){disposed=true;setEnabled(false);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
+		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics,input:{...diagnostics.input},active:enabled}),status:()=>error,destroy(){disposed=true;setEnabled(false);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
 	}
 	return {install,selectionContext:capture.fromSelection,transport,quotePath};
 });

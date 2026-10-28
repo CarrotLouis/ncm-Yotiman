@@ -2,7 +2,7 @@
   "manifest_version":1,
   "name":"Yomitan 歌词词典",
   "slug":"ncm-yotiman",
-  "version":"0.1.0",
+  "version":"0.1.1",
   "author":"CarrotLouis",
   "author_link":"https://github.com/CarrotLouis/ncm-Yotiman",
   "description":"Shift 选择日语歌词查词，导入 Yomitan 词典，携带当前振假名与音频制卡（实验版）",

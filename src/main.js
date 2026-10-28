@@ -31,15 +31,16 @@
  }
  async function probe(){
   const helper=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';
-  return {build:'ncm-Yotiman 0.1.0',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:document.querySelectorAll(NcmYotimanSelection.LINES).length,gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
+  return {build:'ncm-Yotiman 0.1.1',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
  }
  function panel(){
   const root=document.createElement('section');root.style.cssText='font-size:14px;line-height:1.8;padding:12px';
-  root.innerHTML='<h2>ncm-Yotiman · Yomitan 歌词词典</h2><label><input type="checkbox"> 启用词典</label><p><button data-settings>打开 Yomitan 设置</button> <button data-check>运行检查</button></p><p>按住 Shift 从歌词字面开始拖选，松开鼠标查词。当前振假名和人工纠音会随整句传给制卡功能。</p><p>Anki 句子字段可使用 {sentence} 或 {sentence-furigana}；声音可在查词窗口手动附加 ShareX 已录制的音频。</p><p><a href="#">源码与问题反馈</a></p><pre role="status" style="white-space:pre-wrap"></pre>';
+  root.innerHTML='<h2>ncm-Yotiman · Yomitan 歌词词典</h2><label><input type="checkbox"> 启用词典</label><p><button data-settings>打开 Yomitan 设置</button> <button data-check>运行检查</button> <button data-copy disabled>复制结果</button></p><p>按住 Shift 从歌词字面开始拖选，松开鼠标查词。当前振假名和人工纠音会随整句传给制卡功能。</p><p>Anki 句子字段可使用 {sentence} 或 {sentence-furigana}；声音可在查词窗口手动附加 ShareX 已录制的音频。</p><p><a href="#">源码与问题反馈</a></p><pre role="status" style="white-space:pre-wrap"></pre>';
   const input=root.querySelector('input');input.checked=config.dictionaryEnabled;input.onchange=()=>set('dictionaryEnabled',input.checked);
   const status=root.querySelector('[role=status]');
   root.querySelector('[data-settings]').onclick=()=>dictionary&&dictionary.openSettings().catch(e=>{status.textContent=e.message;});
-  root.querySelector('[data-check]').onclick=()=>probe().then(value=>{status.textContent=JSON.stringify(value,null,2);}).catch(e=>{status.textContent=e.message;});
+  root.querySelector('[data-check]').onclick=()=>probe().then(value=>{status.textContent=JSON.stringify(value,null,2);root.querySelector('[data-copy]').disabled=false;}).catch(e=>{status.textContent=e.message;});
+  root.querySelector('[data-copy]').onclick=()=>{const text=document.createElement('textarea');text.value=status.textContent;text.style.cssText='position:fixed;left:-10000px;top:0';root.append(text);text.select();let ok=false;try{ok=document.execCommand('copy');}catch(_){}text.remove();root.querySelector('[data-copy]').textContent=ok?'已复制':'请手动复制下方结果';};
   root.querySelector('a').onclick=e=>{e.preventDefault();betterncm.ncm.openUrl('https://github.com/CarrotLouis/ncm-Yotiman');};
   return root;
  }
@@ -54,7 +55,7 @@
   const legacy=window.JPFuriganaPlus;
   if(legacy&&legacy.dictionary){legacy.dictionary.destroy();legacy.set('dictionaryEnabled',false);legacy.dictionary=null;}
   dictionary=NcmYotimanDictionary.install({betterncm,plugin,config:()=>config,set,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},track,error:text=>console.warn('[ncm-Yotiman]',text)});
-  window.NcmYotiman={config,set,track,probe,dictionary,build:'0.1.0'};
+  window.NcmYotiman={config,set,track,probe,dictionary,build:'0.1.1'};
   console.log('[ncm-Yotiman] Loaded; dictionary '+(config.dictionaryEnabled?'enabled':'disabled'));
  }
  if(typeof plugin.onAllPluginsLoaded==='function')plugin.onAllPluginsLoaded(start);else plugin.onLoad(()=>start(window.loadedPlugins));
