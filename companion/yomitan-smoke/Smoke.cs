@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Diagnostics;
 using CloudmusicYomitan;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -33,7 +34,7 @@ internal static class SmokeRunner {
             try {
                 var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(args[0],"profile"),new CoreWebView2EnvironmentOptions {AreBrowserExtensionsEnabled=true});
                 using(var window=new DictionaryWindow(env,args[1],true)) {
-                    await window.Open(Context());
+                    var startup=Stopwatch.StartNew();await window.Warmup("light");write("WARMUP_MS "+startup.ElapsedMilliseconds);if(window.Visible)throw new Exception("Prewarm showed a window");
                     var view=(WebView2)typeof(DictionaryWindow).GetField("view",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(window);
                     var core=view.CoreWebView2;
                     core.WebMessageReceived+=(x,a)=>write("MESSAGE "+a.WebMessageAsJson);
@@ -46,7 +47,12 @@ internal static class SmokeRunner {
                     await core.ExecuteScriptAsync(File.ReadAllText(args[3]));
                     await Wait(core,"window.__ncmSmoke==='configured'",240);
                     write("SETUP configured");
-                    await window.Open(Context());
+                    int navigations=0;core.NavigationStarting+=(x,a)=>navigations++;
+                    anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(Context(),anchor.Handle);write("FIRST_LOOKUP_MS "+startup.ElapsedMilliseconds);
+                    var next=Context();next["term"]="歌";next["theme"]="light";anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(next,anchor.Handle);write("NEXT_LOOKUP_MS "+startup.ElapsedMilliseconds);if(navigations!=0)throw new Exception("A lookup reloaded the search page");
+                    await Wait(core,"document.documentElement.dataset.theme==='light'");using(var image=File.Create(Path.Combine(args[0],"lookup-light.png")))await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png,image);
+                    anchor.Activate();await Task.Delay(100);var dark=Context();dark["theme"]="dark";await window.Open(dark,anchor.Handle);await Wait(core,"document.documentElement.dataset.theme==='dark'");
+                    anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(dark,anchor.Handle);write("SAME_LOOKUP_MS "+startup.ElapsedMilliseconds);if(startup.ElapsedMilliseconds>1500)throw new Exception("Repeated lookup stalled");
                     await Wait(core,"!!document.querySelector('[data-action=save-note]:not(:disabled)')");
                     write("LOOKUP "+await core.ExecuteScriptAsync("JSON.stringify({history:history.state,entries:document.querySelectorAll('[data-action=save-note]').length})"));
                     string wav=Path.Combine(args[0],"synthetic.wav");var bytes=new byte[844];

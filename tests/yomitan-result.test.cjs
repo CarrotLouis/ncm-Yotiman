@@ -2,7 +2,7 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const directory=process.argv[2];if(!directory)throw new Error('Pass the private native-smoke directory');
-const requests=fs.readFileSync(path.join(directory,'anki-mock.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
+const requests=fs.readFileSync(path.join(directory,process.argv[3]||'anki-mock.jsonl'),'utf8').trim().split('\n').map(JSON.parse);
 const note=requests.filter(r=>r.action==='addNote').at(-1)?.params.note;
 const media=requests.filter(r=>r.action==='storeMediaFile').at(-1)?.params;
 assert(note,'Original Yomitan Add button must reach the mock Anki server');

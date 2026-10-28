@@ -15,6 +15,9 @@ for(const entry of manifest.injects.Main)win.eval(fs.readFileSync(path.resolve(_
  const menu=win.document.querySelector('.rnp-settings-menu');
  assert.deepEqual([...menu.querySelector('.rnp-settings-menu-tabs').children].map(n=>n.dataset.tab),['lyric','jp-furigana-plus','ncm-yotiman','font']);
  assert.deepEqual(win.NcmYotiman.track().id,'42');
+ win.document.body.style.setProperty('--colorBackground','rgb(20, 25, 30)');assert.equal(win.NcmYotiman.theme(),'dark');
+ win.document.body.style.setProperty('--colorBackground','rgb(245, 246, 248)');assert.equal(win.NcmYotiman.theme(),'light');
+ win.document.body.classList.add('rnp-lyric-page-open');win.document.body.style.setProperty('--rnp-accent-color-bg','rgb(0, 31, 40)');assert.equal(win.NcmYotiman.theme(),'dark');win.document.body.classList.remove('rnp-lyric-page-open');
  const status=await win.NcmYotiman.probe();assert(status.helperExists&&status.hasTrack);assert(!JSON.stringify(status).includes('試験曲'));
  const panel=handlers.panel();assert(panel.textContent.includes('Yomitan'));assert(panel.querySelector('input').checked);
  win.document.body.append(panel);const mode=panel.querySelector('[data-input-mode]'),group=menu.querySelector('.rnp-group[data-tab="ncm-yotiman"]');

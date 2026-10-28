@@ -35,9 +35,16 @@
   const id=playing&&(playing.resourceTrackId||playing.trackId||current&&(current.id||current.trackId))||plus&&plus.trackId&&plus.trackId();
   return id?{id:String(id),title:current&&current.name?current.name+' — '+(current.ar||current.artists||[]).map(a=>a.name).filter(Boolean).join(' / '):document.title}:null;
  }
+ function theme(){
+  const style=getComputedStyle(document.body),rnp=document.body.classList.contains('rnp-lyric-page-open');
+  const color=(rnp?style.getPropertyValue('--rnp-accent-color-bg'):'')||style.getPropertyValue('--colorBackground')||style.backgroundColor;
+  const rgb=color&&color.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if(rgb&&!/rgba\([^)]*,\s*0\s*\)/.test(color))return Number(rgb[1])*.2126+Number(rgb[2])*.7152+Number(rgb[3])*.0722<145?'dark':'light';
+  return window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+ }
  async function probe(){
   const helper=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';
-  return {build:'ncm-Yotiman 0.1.2',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
+  return {build:'ncm-Yotiman 0.1.3',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
  }
  function panel(){
   if(settingsPanel){refreshPanel();return settingsPanel;}
@@ -62,8 +69,8 @@
   if(hasPlus)for(let i=0;i<30&&!window.JPFuriganaPlus;i++)await new Promise(r=>setTimeout(r,100));
   const legacy=window.JPFuriganaPlus;
   if(legacy&&legacy.dictionary){legacy.dictionary.destroy();legacy.set('dictionaryEnabled',false);legacy.dictionary=null;}
-  dictionary=NcmYotimanDictionary.install({betterncm,plugin,config:()=>config,set,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},track,error:text=>console.warn('[ncm-Yotiman]',text)});
-  window.NcmYotiman={config,set,track,probe,dictionary,build:'0.1.2'};
+  dictionary=NcmYotimanDictionary.install({betterncm,plugin,config:()=>config,set,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},track,theme,error:text=>console.warn('[ncm-Yotiman]',text)});
+  window.NcmYotiman={config,set,track,theme,probe,dictionary,build:'0.1.3'};
   console.log('[ncm-Yotiman] Loaded; dictionary '+(config.dictionaryEnabled?'enabled':'disabled'));
  }
  if(typeof plugin.onAllPluginsLoaded==='function')plugin.onAllPluginsLoaded(start);else plugin.onLoad(()=>start(window.loadedPlugins));

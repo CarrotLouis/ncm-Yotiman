@@ -12,29 +12,29 @@
 		return '"'+value+'"';
 	}
 	function transport(bn,plugin) {
-		let rootPromise;
+		let rootPromise,prepared;
 		const root=()=>rootPromise || (rootPromise=bn.app.getDataPath().then(p=>p.replace(/\\/g,'/')+'/ncm-yotiman'));
 		async function send(action,context={}) {
-			const base=await root(),dir=base+'/requests',exe=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';
-			if(!await bn.fs.exists(exe)) {
-				if(action==='shutdown') return;
-				throw new Error('尚未安装 Yomitan 组件，请按 README 构建完整插件');
-			}
-			if(!await bn.fs.mkdir(dir)) throw new Error('无法创建 Yomitan 独立数据目录');
+			if(!prepared)prepared=(async()=>{const base=await root(),dir=base+'/requests',exe=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';if(!await bn.fs.exists(exe))throw new Error('尚未安装 Yomitan 组件');if(!await bn.fs.mkdir(dir))throw new Error('无法创建词典数据目录');return {base,dir,exe};})().catch(e=>{prepared=null;throw e;});
+			let paths;try{paths=await prepared;}catch(e){if(action==='shutdown')return;throw e;}
+			const {base,dir,exe}=paths;
 			const id=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2),path=dir+'/'+id+'.json';
 			// A separate marker is created only after writeFile has finished.
 			const text=JSON.stringify({...context,action,created:Date.now()});
 			if(!await bn.fs.writeFile(path,new Blob([text],{type:'application/json'}))) throw new Error('无法写入查词请求');
 			if(!await bn.fs.writeFile(path+'.ready',new Blob(['1']))) throw new Error('无法提交查词请求');
-			if(!await bn.app.exec(quotePath(exe)+' --data '+quotePath(base),false,false)) throw new Error('无法启动 Yomitan 独立窗口');
-			for(let i=0;i<140;i++) {
+			let launched=false;const launch=async()=>{launched=true;if(!await bn.app.exec(quotePath(exe)+' --data '+quotePath(base),false,false))throw new Error('无法启动词典窗口');};
+			if(!await bn.fs.exists(base+'/host.ready'))await launch();
+			const started=Date.now();
+			for(let i=0;i<400&&Date.now()-started<30000;i++) {
 				if(await bn.fs.exists(path+'.reply')) {
 					const reply=JSON.parse(await bn.fs.readFileText(path+'.reply'));
 					try { await bn.fs.remove(path+'.reply'); } catch(_) { /* opened window remains usable */ }
 					if(!reply.ok) throw new Error(reply.error || 'Yomitan 打开失败');
-					return;
+					return reply;
 				}
-				await new Promise(resolve=>setTimeout(resolve,250));
+				if(!launched&&Date.now()-started>300)await launch();
+				await new Promise(resolve=>setTimeout(resolve,i<20?25:100));
 			}
 			throw new Error('Yomitan 启动超时，请检查独立窗口或 WebView2 运行时');
 		}
@@ -42,14 +42,18 @@
 	}
 	function install(api,doc=document) {
 		const win=doc.defaultView,menus=new Map(); let enabled=false,armed=false,anchor=null,shiftHeld=false,source='',swallowClick=false,inflight=false,error='',disposed=false,notice=null,noticeTimer;
-		let pointer=null,hoverPoint=null,hoverTimer=null,hoverEpoch=0,lastHover=null;
+		let pointer=null,hoverPoint=null,hoverTimer=null,hoverEpoch=0,lastHover=null,previewFrame=null,preview=null,highlight=null,warmupTimer=null;
 		let inputMode=api.config().dictionaryInputMode||'hover';
-		const diagnostics={down:0,hover:0,selected:0,sent:0,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
+		const diagnostics={down:0,hover:0,selected:0,sent:0,warmed:false,lastLookupMs:null,input:{pointerdown:0,mousedown:0,shiftDown:0},lastInput:null,last:'尚未查词'};
 		const bridge=api.transport || transport(api.betterncm,api.plugin);
 		const style=doc.createElement('style');
 		style.textContent=`${LINES.split(',').map(s=>'body.fg-dictionary-select '+s+',body.fg-dictionary-select '+s+' *').join(',')} {user-select:text!important;-webkit-user-select:text!important;cursor:text!important}
 		${LINES.split(',').map(s=>'body.ncm-yotiman-enabled '+s+',body.ncm-yotiman-enabled '+s+' *').join(',')},body.ncm-yotiman-enabled .rnp-lyrics,body.ncm-yotiman-enabled .rnp-lyrics-line { -webkit-app-region:no-drag!important; }
 		body.fg-dictionary-select .fg-rt,body.fg-dictionary-select rt,body.fg-dictionary-select .rnp-karaoke-word-filler {user-select:none!important;-webkit-user-select:none!important;pointer-events:none!important}
+		body.ncm-yotiman-enabled .ncm-yotiman-word{outline:2px solid #67d8ff;outline-offset:2px;border-radius:3px;background:#67d8ff22}
+		[data-ncm-yotiman-highlight],[data-ncm-yotiman-highlight] *{user-select:text!important;-webkit-user-select:text!important}
+		[data-ncm-yotiman-highlight] .fg-rt,[data-ncm-yotiman-highlight] rt{user-select:none!important;-webkit-user-select:none!important}
+		[data-ncm-yotiman-highlight] ::selection,[data-ncm-yotiman-highlight]::selection{background:#67d8ff66;color:inherit}
 		[data-tab="${TAB}"] .fg-dictionary-hint {opacity:.65;font-size:13px;line-height:1.6;margin:12px 0;white-space:pre-wrap}
 		[data-tab="${TAB}"] button {border-radius:6px;padding:6px} [data-tab="${TAB}"] [role="alert"] {color:#ffb4ab} [data-tab="${TAB}"] [hidden] {display:none!important}`;
 		doc.head.append(style);
@@ -72,8 +76,11 @@
 			}
 		}
 		function openSettings() { return send('settings'); }
+		function warmup(){clearTimeout(warmupTimer);if(enabled&&!api.transport)warmupTimer=setTimeout(()=>{bridge.send('warmup',{theme:api.theme?api.theme():'dark'}).then(()=>{diagnostics.warmed=true;}).catch(()=>{});},400);}
+		function clearHighlight(){if(highlight){highlight.line.removeAttribute('data-ncm-yotiman-highlight');if(highlight.unit)highlight.unit.classList.remove('ncm-yotiman-word');const selection=win.getSelection();if(selection.rangeCount&&highlight.range&&selection.getRangeAt(0).startContainer===highlight.range.startContainer)selection.removeAllRanges();highlight=null;}}
+		function showHighlight(context){if(!context.range)return;clearHighlight();highlight=context;context.line.setAttribute('data-ncm-yotiman-highlight','');if(context.unit)context.unit.classList.add('ncm-yotiman-word');const selection=win.getSelection();selection.removeAllRanges();selection.addRange(context.range.cloneRange());}
 		function cancelHover(){clearTimeout(hoverTimer);hoverTimer=null;hoverPoint=null;hoverEpoch++;}
-		function reset() { cancelHover();pointer=null;lastHover=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
+		function reset() { cancelHover();if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;preview=null;pointer=null;lastHover=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
 		async function lookup(selected,mode,valid=()=>true){
 			if(!selected||inflight)return;
 			diagnostics.selected++;inflight=true;
@@ -81,31 +88,31 @@
 				const track=await api.track();if(!enabled||!valid())return;
 				if(!track||!track.id)throw new Error('未取得歌曲 ID，请打开歌曲播放页后重试');
 				diagnostics.sent++;diagnostics.last=mode==='hover'?'正在悬停查词…':'正在查词…';refresh();
-				await send('lookup',{...selected,title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});
+				const started=Date.now();await send('lookup',{...selected,theme:api.theme?api.theme():'dark',title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});diagnostics.lastLookupMs=Date.now()-started;
 				diagnostics.last='查词窗口已打开';refresh();
 			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;}
 		}
 		function scheduleHover(point){
 			if(inputMode==='drag'||!point||armed||inflight){cancelHover();return;}
-			if(hoverPoint&&hoverPoint.target===point.target&&Math.abs(hoverPoint.clientX-point.clientX)<3&&Math.abs(hoverPoint.clientY-point.clientY)<3)return;
-			cancelHover();hoverPoint=point;const epoch=hoverEpoch;
-			hoverTimer=setTimeout(()=>{
-				hoverTimer=null;if(epoch!==hoverEpoch||!enabled||armed||inflight)return;
-				const target=typeof doc.elementFromPoint==='function'?doc.elementFromPoint(point.clientX,point.clientY):point.target;
+			hoverPoint=point;if(previewFrame!==null)return;
+			previewFrame=win.requestAnimationFrame(()=>{
+				previewFrame=null;const current=hoverPoint;if(!current||!enabled||armed)return;
+				const target=typeof doc.elementFromPoint==='function'?doc.elementFromPoint(current.clientX,current.clientY):current.target;
 				if(!target||!target.isConnected)return;
-				const selected=capture.fromPoint(doc,{...point,target});if(!selected)return;
-				const line=capture.lineForTarget(target);
-				if(lastHover&&lastHover.line===line&&lastHover.offset===selected.offset&&lastHover.term===selected.term&&lastHover.sentence===selected.sentence)return;
-				lastHover={line,offset:selected.offset,term:selected.term,sentence:selected.sentence};diagnostics.hover++;
-				lookup(selected,'hover',()=>epoch===hoverEpoch);
-			},180);
+				const selected=capture.fromPoint(doc,{...current,target});
+				if(!selected){cancelHover();preview=null;clearHighlight();return;}
+				if(preview&&preview.line===selected.line&&preview.offset===selected.offset&&preview.term===selected.term&&preview.sentence===selected.sentence)return;
+				cancelHover();preview=selected;showHighlight(selected);const epoch=hoverEpoch;
+				if(lastHover&&lastHover.line===selected.line&&lastHover.offset===selected.offset&&lastHover.term===selected.term&&lastHover.sentence===selected.sentence)return;
+				hoverTimer=setTimeout(()=>{hoverTimer=null;if(epoch!==hoverEpoch||!enabled||armed||inflight||!selected.range.startContainer.isConnected)return;lastHover=selected;diagnostics.hover++;lookup(selected,'hover',()=>epoch===hoverEpoch);},140);
+			});
 		}
 		function shift(e) {
 			if(!enabled)return;
 			if(e.key==='Shift'||e.keyCode===16){
 				if(e.type==='keydown'&&e.target.closest&&e.target.closest('input,textarea,[contenteditable="true"]'))return;
 				const held=e.type==='keydown';if(held&&shiftHeld)return;
-				shiftHeld=held;cancelHover();lastHover=null;
+				shiftHeld=held;cancelHover();preview=null;lastHover=null;
 				if(shiftHeld){diagnostics.input.shiftDown++;capture.lines(doc);}
 				doc.body.classList.toggle('fg-dictionary-select',shiftHeld);if(shiftHeld&&pointer)scheduleHover(pointer);
 			}
@@ -119,6 +126,7 @@
 			const line=capture.lineForTarget(e.target),shifted=!!(e.shiftKey||shiftHeld);
 			if(line||shifted){const target=e.target.nodeType===1?e.target:e.target.parentElement;diagnostics.lastInput={type:e.type,shift:!!e.shiftKey,shiftHeld,button:e.button,matched:!!line,target:target?(target.tagName+'.'+[...target.classList].slice(0,4).join('.')).slice(0,200):'unknown'};}
 			if(inputMode==='hover'||!shifted||e.button!==0||!line)return;
+			clearHighlight();
 			win.getSelection().removeAllRanges(); // Shift must not extend a previous lookup's selection.
 			diagnostics.down++;doc.body.classList.add('fg-dictionary-select');capture.mark(line);anchor=capture.begin(doc,e,line);
 			armed=true;source=e.type;e.stopImmediatePropagation();
@@ -147,7 +155,7 @@
 			// to both streams and deduplicate a gesture instead of probing constructors.
 			for(const [type,fn] of [['pointerdown',down],['pointermove',move],['pointerup',up],['mousedown',down],['mousemove',move],['mouseup',up],['click',click]]) win[enabled?'addEventListener':'removeEventListener'](type,fn,true);
 			win[enabled?'addEventListener':'removeEventListener']('blur',reset);
-			if(!enabled) send('shutdown').catch(()=>{});
+			clearTimeout(warmupTimer);if(enabled)warmup();else{clearHighlight();send('shutdown').catch(()=>{});}
 			refresh();
 		}
 		function scan() {
@@ -182,9 +190,10 @@
 			if(records.some(r=>[...r.addedNodes,...r.removedNodes].some(n=>n.nodeType===1&&(n.matches(selector)||n.querySelector(selector))))) scan();
 		});
 		observer.observe(doc.body,{childList:true,subtree:true});
+		win.addEventListener('rnp-lyric-page-opened',warmup);
 		const unsubscribe=api.subscribe(()=>{const next=api.config().dictionaryInputMode||'hover';if(next!==inputMode){inputMode=next;reset();}setEnabled(api.config().dictionaryEnabled);});
 		setEnabled(api.config().dictionaryEnabled);scan();
-		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics,input:{...diagnostics.input},inputMode,active:enabled}),status:()=>error,destroy(){disposed=true;setEnabled(false);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
+		return {openSettings,setEnabled,diagnostics:()=>({...diagnostics,input:{...diagnostics.input},inputMode,active:enabled}),status:()=>error,destroy(){disposed=true;setEnabled(false);win.removeEventListener('rnp-lyric-page-opened',warmup);observer.disconnect();unsubscribe();style.remove();clearTimeout(noticeTimer);if(notice)notice.remove();for(const binding of menus.values())binding.dispose();menus.clear();}};
 	}
 	return {INPUT_MODES,install,selectionContext:capture.fromSelection,transport,quotePath};
 });

@@ -12,7 +12,7 @@ win.Range.prototype.getClientRects=function(){
 doc.caretRangeFromPoint=x=>{const r=doc.createRange();r.setStart(text,Math.max(0,Math.min(2,Math.round((x-40)/20))));r.collapse(true);return r;};
 const point=x=>({target:ruby,clientX:x,clientY:30});
 assert.equal(capture.fromPoint(doc,point(58)).offset,2,'Right half of a glyph must scan the character under the cursor');
-assert.equal(capture.fromPoint(doc,point(78)).offset,3);
+assert.equal(capture.fromPoint(doc,point(78)).offset,2,'Hover anywhere in a furigana unit must select the whole word');
 assert.equal(capture.fromPoint(doc,point(210)),null,'Hover outside the text must not clamp to the last character');
 assert.equal(capture.fromPoint(doc,{...point(58),target:doc.querySelector('.rnp-lyrics-line-translated')}),null);
 const nativeCaret=doc.caretRangeFromPoint;doc.caretRangeFromPoint=()=>null;
@@ -25,7 +25,8 @@ function key(type){win.dispatchEvent(new win.KeyboardEvent(type,{key:'Shift',shi
 (async()=>{
  move(58);await tick();assert.equal(sent.length,0,'Ordinary hover must not look up text');
  key('keydown');await tick();assert.equal(sent.length,1,'Pressing Shift over stationary text must work without a mouse button');
- assert.equal(sent[0].term,'戀人と歌う。');assert.equal(sent[0].offset,2);assert(sent[0].segments.some(s=>s.text==='戀人'&&s.reading==='あなた'));
+ assert.equal(sent[0].term,'戀人');assert.equal(sent[0].offset,2);assert(sent[0].segments.some(s=>s.text==='戀人'&&s.reading==='あなた'));
+ assert.equal(capture.plain(win.getSelection().getRangeAt(0).cloneContents()),'戀人');assert(line.hasAttribute('data-ncm-yotiman-highlight'));assert(ruby.classList.contains('ncm-yotiman-word'));
  assert.equal(adapter.diagnostics().down,0);assert.equal(adapter.diagnostics().hover,1);
  move(58,true,'pointermove');move(58,true);move(59,true);await tick();assert.equal(sent.length,1,'Pointer/mouse compatibility streams and jitter must not duplicate a lookup');
  key('keyup');move(78);key('keydown');key('keyup');await tick();assert.equal(sent.length,1,'Releasing Shift before the dwell completes cancels hover');

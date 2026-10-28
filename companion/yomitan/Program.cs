@@ -10,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using System.Diagnostics;
+using System.Drawing;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -36,6 +38,15 @@ namespace CloudmusicYomitan {
             }
         }
     }
+    internal static class WindowPolicy {
+        [DllImport("user32.dll")]internal static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint processId);
+        [DllImport("user32.dll")]internal static extern bool IsIconic(IntPtr window);
+        [DllImport("user32.dll")]internal static extern bool IsWindowVisible(IntPtr window);
+        internal static Func<IntPtr,bool> IsMusicWindow=window=>{try{GetWindowThreadProcessId(window,out var pid);return Process.GetProcessById((int)pid).ProcessName.Equals("cloudmusic",StringComparison.OrdinalIgnoreCase);}catch{return false;}};
+        internal static IntPtr MusicForeground(){var window=GetForegroundWindow();return window!=IntPtr.Zero&&IsMusicWindow(window)&&!IsIconic(window)?window:IntPtr.Zero;}
+        internal sealed class OwnerWindow:IWin32Window{public IntPtr Handle{get;}internal OwnerWindow(IntPtr handle){Handle=handle;}}
+    }
     internal sealed class HostContext : ApplicationContext {
         readonly string root,requests;
         readonly Control dispatcher=new Control();
@@ -45,17 +56,24 @@ namespace CloudmusicYomitan {
         CoreWebView2Environment environment;
         Task<CoreWebView2Environment> environmentTask;
         DictionaryWindow settings,lookup;
+        bool scanning;DateTime lastActivity=DateTime.UtcNow;
         internal HostContext(string path) {
             root=path; requests=Path.Combine(root,"requests");
             var handle=dispatcher.Handle;
             watcher=new FileSystemWatcher(requests,"*.ready");
             watcher.Created+=(s,e)=>Schedule(); watcher.Renamed+=(s,e)=>Schedule(); watcher.EnableRaisingEvents=true;
-            idle.Tick+=(s,e)=>{ if(settings==null && lookup==null && processing.Count==0) ExitThread(); };
+            File.WriteAllText(Path.Combine(root,"host.ready"),Process.GetCurrentProcess().Id.ToString());
+            idle.Tick+=(s,e)=>{if(processing.Count==0&&DateTime.UtcNow-lastActivity>TimeSpan.FromMinutes(2)&&(settings==null||!WindowPolicy.IsWindowVisible(settings.Handle))&&(lookup==null||!WindowPolicy.IsWindowVisible(lookup.Handle)))ExitThread();};
             idle.Start(); Schedule();
         }
         void Schedule() { if(!dispatcher.IsDisposed) dispatcher.BeginInvoke(new Action(Scan)); }
         async void Scan() {
-            foreach(string marker in Directory.GetFiles(requests,"*.ready")) {
+            if(scanning)return;scanning=true;
+            var visited=new HashSet<string>();
+            try{while(true){
+            var markers=Directory.GetFiles(requests,"*.ready").Where(marker=>!visited.Contains(marker)).ToArray();if(markers.Length==0)break;
+            foreach(string marker in markers) {
+                visited.Add(marker);
                 string file=marker.Substring(0,marker.Length-6);
                 if(processing.Contains(file)) continue; processing.Add(file);
                 try {
@@ -65,18 +83,20 @@ namespace CloudmusicYomitan {
                     if(!command.TryGetValue("created",out var created) || Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()-Convert.ToDouble(created))>60000) throw new InvalidDataException("查词请求已过期");
                     string action=Json.Text(command,"action");
                     if(action=="shutdown") { Reply(file,null); ExitThread(); return; }
-                    if(action!="settings" && action!="lookup") throw new InvalidDataException("未知词典操作");
+                    if(action!="settings" && action!="lookup"&&action!="warmup") throw new InvalidDataException("未知词典操作");
+                    lastActivity=DateTime.UtcNow;var source=WindowPolicy.MusicForeground();
                     var form=action=="settings" ? settings : lookup;
                     if(form==null || form.IsDisposed) {
-                        form=new DictionaryWindow(await Environment(),Path.GetDirectoryName(Application.ExecutablePath),action=="lookup");
+                        form=new DictionaryWindow(await Environment(),Path.GetDirectoryName(Application.ExecutablePath),action!="settings");
                         if(action=="settings") settings=form; else lookup=form;
                         form.FormClosed+=(s,e)=>{ if(settings==s) settings=null; if(lookup==s) lookup=null; };
                     }
-                    await form.Open(command);
+                    if(action=="warmup")await form.Warmup(Json.Text(command,"theme"));else await form.Open(command,source);
                     Reply(file,null);
                 } catch(Exception error) { Reply(file,error.Message); }
                 finally { processing.Remove(file); }
             }
+            }}finally{scanning=false;}
         }
         Task<CoreWebView2Environment> Environment() => environmentTask ?? (environmentTask=CreateEnvironment());
         async Task<CoreWebView2Environment> CreateEnvironment() {
@@ -94,12 +114,14 @@ namespace CloudmusicYomitan {
             } catch(IOException) { }
         }
         protected override void ExitThreadCore() {
+            try{File.Delete(Path.Combine(root,"host.ready"));}catch(IOException){}
             watcher.Dispose(); idle.Dispose(); settings?.Dispose(); lookup?.Dispose(); dispatcher.Dispose();
             base.ExitThreadCore();
         }
     }
     internal sealed class DictionaryWindow : Form {
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr handle,int command);
+        [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
         readonly WebView2 view=new WebView2 {Dock=DockStyle.Fill};
         readonly CoreWebView2Environment environment;
         readonly string home;
@@ -108,46 +130,42 @@ namespace CloudmusicYomitan {
         readonly TextBox audioField=new TextBox {Width=110,Text="SentenceAudio"};
         string extensionId,scriptId,audioPath;
         Task initializeTask;
+        Task searchTask;TaskCompletionSource<bool> pageReady;string pendingTerm;TaskCompletionSource<bool> lookupReady;
         internal DictionaryWindow(CoreWebView2Environment env,string directory,bool lookup) {
             environment=env; home=directory; isLookup=lookup;
             Text=lookup ? "Yomitan · 歌词查词" : "Yomitan · 词典与 Anki 设置";
-            Width=lookup ? 700 : 1100; Height=800; TopMost=lookup;
+            Width=lookup ? 700 : 1100; Height=800;TopMost=false;ShowIcon=false;Font=new Font("Segoe UI",10);AutoScaleMode=AutoScaleMode.Dpi;
             Controls.Add(view);
-            if(lookup) {
-                var bar=new FlowLayoutPanel {Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(6)};
-                var choose=new Button {Text="附加 ShareX 音频",AutoSize=true};
-                var clear=new Button {Text="清除",AutoSize=true};
-                choose.Click+=(s,e)=>ChooseAudio(); clear.Click+=(s,e)=>ClearAudio();
-                bar.Controls.Add(choose); bar.Controls.Add(new Label {Text="Anki 字段",AutoSize=true});
-                bar.Controls.Add(audioField); bar.Controls.Add(clear); bar.Controls.Add(audioStatus); Controls.Add(bar);
-            }
+            if(lookup)FormClosing+=(s,e)=>{if(e.CloseReason==CloseReason.UserClosing){e.Cancel=true;Hide();}};
         }
-        internal void Reveal() {
-            // Lookup must remain visible while the user interacts with the music
-            // client. Reapply this for reused/minimized windows on every lookup.
-            TopMost=isLookup;
+        internal void Reveal(IntPtr source=default(IntPtr)) {
+            if(isLookup&&(source==IntPtr.Zero||WindowPolicy.GetForegroundWindow()!=source||WindowPolicy.IsIconic(source)))return;
+            TopMost=false;
             if(WindowState==FormWindowState.Minimized) WindowState=FormWindowState.Normal;
-            Show(); ShowWindow(Handle,5); BringToFront(); Activate();
+            if(!Visible){if(isLookup)Show(new WindowPolicy.OwnerWindow(source));else Show();}
+            ShowWindow(Handle,5);BringToFront();Activate();
         }
-        internal async Task Open(Dictionary<string,object> command) {
-            Reveal();
-            initializeTask=initializeTask ?? Initialize(); await initializeTask;
-            string page="settings.html";
+        internal async Task Warmup(string theme){ApplyTheme(theme);await EnsureSearch();}
+        void ApplyTheme(string theme){bool dark=theme!="light";BackColor=dark?Color.FromArgb(25,27,31):Color.FromArgb(249,250,252);if(view.CoreWebView2!=null)view.CoreWebView2.Profile.PreferredColorScheme=dark?CoreWebView2PreferredColorScheme.Dark:CoreWebView2PreferredColorScheme.Light;int value=dark?1:0;try{DwmSetWindowAttribute(Handle,20,ref value,4);}catch(DllNotFoundException){} }
+        async Task EnsureSearch(){
+            if(searchTask!=null&&searchTask.Status==TaskStatus.RanToCompletion)return;
+            initializeTask=initializeTask??Initialize();await initializeTask;if(searchTask==null)searchTask=LoadSearch();await searchTask;
+        }
+        async Task LoadSearch(){pageReady=new TaskCompletionSource<bool>();view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/search.html?query=%E3%81%82&type=terms&wildcards=off");if(await Task.WhenAny(pageReady.Task,Task.Delay(15000))!=pageReady.Task){searchTask=null;string state=await view.CoreWebView2.ExecuteScriptAsync("JSON.stringify({page:location.pathname,loaded:document.documentElement.dataset.loaded,bridge:document.documentElement.dataset.fgBridge,error:document.documentElement.dataset.fgBridgeError})");throw new TimeoutException("词典页面初始化超时："+state);}}
+        internal async Task Open(Dictionary<string,object> command,IntPtr source=default(IntPtr)) {
+            ApplyTheme(Json.Text(command,"theme"));
             if(isLookup) {
                 string term=Json.Text(command,"term"),sentence=Json.Text(command,"sentence"),title=Json.Text(command,"title"),url=Json.Text(command,"url");
                 int offset=command.TryGetValue("offset",out var raw) ? Convert.ToInt32(raw) : 0;
                 if(term.Length==0 || term.Length>120 || sentence.Length>4000 || offset<0 || offset+term.Length>sentence.Length || sentence.Substring(offset,term.Length)!=term) throw new InvalidDataException("选词与原文不一致，请重新选择同一行中的文字");
                 ClearAudio();
-                if(scriptId!=null) view.CoreWebView2.RemoveScriptToExecuteOnDocumentCreated(scriptId);
                 object segments=ValidateSegments(command,sentence);
-                string bridge=File.ReadAllText(Path.Combine(home,"page-bridge.js"),Encoding.UTF8).Replace("__FG_CONTEXT__",Json.Encode(new {sentence,segments,offset,title,url}));
-                scriptId=await view.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(bridge);
-                page="search.html?query="+Uri.EscapeDataString(term)+"&full="+Uri.EscapeDataString(sentence)+"&offset="+offset+"&type=terms&wildcards=off";
-            }
-            view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/"+page);
-            // BetterNCM launches helpers without a console; explicitly reveal the
-            // requested document window even if STARTUPINFO initially hid it.
-            Reveal();
+                await EnsureSearch();ApplyTheme(Json.Text(command,"theme"));
+                pendingTerm=term;lookupReady=new TaskCompletionSource<bool>();
+                string result=await view.CoreWebView2.ExecuteScriptAsync("window.NcmYotimanLookup("+Json.Encode(new {term,sentence,segments,offset,title,url,theme=Json.Text(command,"theme")})+")");
+                if(result!="true")throw new InvalidOperationException("词典页面未就绪");
+                Reveal(source);await Task.WhenAny(lookupReady.Task,Task.Delay(8000));
+            }else{initializeTask=initializeTask??Initialize();await initializeTask;ApplyTheme(Json.Text(command,"theme"));view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/settings.html");Reveal();}
         }
         async Task Initialize() {
             string extensionDirectory=PrepareExtensionDirectory();
@@ -158,6 +176,8 @@ namespace CloudmusicYomitan {
             if(extension==null) extension=await core.Profile.AddBrowserExtensionAsync(extensionDirectory);
             if(!extension.IsEnabled) await extension.EnableAsync(true);
             extensionId=extension.Id;
+            string bridge=File.ReadAllText(Path.Combine(home,"page-bridge.js"),Encoding.UTF8).Replace("__FG_CONTEXT__",Json.Encode(new {sentence="",segments=new object[0],offset=0,title="",url="",theme="dark"}));
+            scriptId=await core.AddScriptToExecuteOnDocumentCreatedAsync(bridge);
             core.NavigationStarting+=(s,e)=>{
                 var uri=new Uri(e.Uri);
                 if(uri.Scheme!="chrome-extension" || uri.Host!=extensionId) e.Cancel=true;
@@ -174,6 +194,8 @@ namespace CloudmusicYomitan {
             core.WebMessageReceived+=(s,e)=>{
                 if(!Uri.TryCreate(e.Source,UriKind.Absolute,out var source) || source.Host!=extensionId || source.AbsolutePath!="/search.html") return;
                 var request=Json.Read(e.WebMessageAsJson); object id=request.TryGetValue("id",out var value) ? value : null;
+                if(Json.Text(request,"action")=="pageReady"){pageReady?.TrySetResult(true);return;}
+                if(Json.Text(request,"action")=="lookupComplete"){if(Json.Text(request,"query")==pendingTerm)lookupReady?.TrySetResult(true);return;}
                 try {
                     if(Json.Text(request,"action")!="audioForNote") return;
                     object audio=null;

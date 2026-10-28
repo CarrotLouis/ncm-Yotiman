@@ -69,8 +69,16 @@
   return best?{node:best.node,offset:x<(best.rect.left+best.rect.right)/2?best.offset:best.end}:null;
  }
  function fromPoint(doc,event){
-  const line=lineForTarget(event.target);if(!line)return null;
+  const target=element(event.target),unit=target&&target.closest('.fg-ruby,ruby'),line=unit?validLine(unit):lineForTarget(target);if(!line)return null;
   const x=event.clientX,y=event.clientY,hit=r=>r.width>0&&r.height>0&&x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;
+  const data=snapshot(line);if(data.sentence.length>4000)return null;
+  if(unit&&line.contains(unit)){
+   const prefix=doc.createRange();prefix.selectNodeContents(line);prefix.setEndBefore(unit);
+   const start=plain(prefix.cloneContents()).length,end=start+plain(unit).length,range=rangeForOffsets(doc,line,start,end);
+   if(range&&([...range.getClientRects(),...unit.getClientRects()].some(hit))){
+    const word=wordBounds(data.sentence,start);return pointContext(doc,line,data,start,Math.max(end,word&&word.start===start?word.end:end),unit);
+   }
+  }
   let glyph=null;const point=caret(doc,x,y);
   if(point&&point.node.nodeType===3&&line.contains(point.node)&&!excluded(point.node)){
    const text=point.node.nodeValue,previous=point.offset>1&&/[\uDC00-\uDFFF]/.test(text[point.offset-1])?point.offset-2:point.offset-1;
@@ -84,12 +92,31 @@
   if(!glyph)glyph=glyphs(doc,line).find(g=>hit(g.rect));
   if(!glyph)return null;
   const prefix=doc.createRange();prefix.selectNodeContents(line);prefix.setEnd(glyph.node,glyph.offset);
-  const offset=plain(prefix.cloneContents()).length,data=snapshot(line);
-  if(data.sentence.length>4000)return null;
-  let term=data.sentence.slice(offset,offset+32).trimEnd();
-  if(/[\uD800-\uDBFF]$/.test(term))term=term.slice(0,-1);
-  if(!/^[\u3040-\u30ff\u3400-\u9fff]/.test(term))return null;
-  return {term,...data,offset};
+  const offset=plain(prefix.cloneContents()).length,word=wordBounds(data.sentence,offset);
+  return word?pointContext(doc,line,data,word.start,word.end,null):null;
+ }
+ let segmenter;
+ function wordBounds(text,offset){
+  if(!/[\u3040-\u30ff\u3400-\u9fff]/.test(text[offset]||''))return null;
+  if(segmenter===undefined){try{segmenter=typeof Intl.Segmenter==='function'?new Intl.Segmenter('ja',{granularity:'word'}):null;}catch(_){segmenter=null;}}
+  if(segmenter)for(const word of segmenter.segment(text))if(word.index<=offset&&offset<word.index+word.segment.length)return {start:word.index,end:word.index+word.segment.length};
+  let start=offset,end=offset+1;const same=c=>/[\u3400-\u9fff]/.test(c||'');
+  if(same(text[offset])){while(start>0&&same(text[start-1]))start--;while(end<text.length&&same(text[end]))end++;while(/[\u3040-\u309f]/.test(text[end]||'')&&end-start<32)end++;}
+  else{while(start>0&&/[\u3040-\u30ff]/.test(text[start-1]))start--;while(end<text.length&&/[\u3040-\u30ff]/.test(text[end])&&end-start<32)end++;}
+  return {start,end};
+ }
+ function rangeForOffsets(doc,line,start,end){
+  const walker=doc.createTreeWalker(line,4);let node,at=0,first=null,last=null;
+  while((node=walker.nextNode())){if(excluded(node))continue;const next=at+node.length;
+   if(!first&&start<next)first={node,offset:Math.max(0,start-at)};
+   if(first&&end<=next){last={node,offset:Math.max(0,end-at)};break;}at=next;
+  }
+  if(!first||!last)return null;const range=doc.createRange();range.setStart(first.node,first.offset);range.setEnd(last.node,last.offset);return range;
+ }
+ function pointContext(doc,line,data,start,end,unit){
+  const term=data.sentence.slice(start,end);if(!term||term.length>120||!/[\u3040-\u30ff\u3400-\u9fff]/.test(term))return null;
+  const range=rangeForOffsets(doc,line,start,end);if(!range)return null;
+  const context={term,...data,offset:start};Object.defineProperties(context,{range:{value:range},line:{value:line},unit:{value:unit}});return context;
  }
  function begin(doc,event,preferredLine){
   const line=mark(preferredLine||lineForTarget(event.target)),point=caret(doc,event.clientX,event.clientY);
@@ -105,5 +132,5 @@
   const range=doc.createRange();if(left.compareBoundaryPoints(0,right)<=0){range.setStart(anchor.node,anchor.offset);range.setEnd(point.node,point.offset);}else{range.setStart(point.node,point.offset);range.setEnd(anchor.node,anchor.offset);}
   const selection=doc.defaultView.getSelection();selection.removeAllRanges();selection.addRange(range);return true;
  }
- return {LINES,EXCLUDE,plain,snapshot,fromSelection,fromPoint,lineForTarget,lines,mark,begin,extend};
+ return {LINES,EXCLUDE,plain,snapshot,fromSelection,fromPoint,rangeForOffsets,lineForTarget,lines,mark,begin,extend};
 });
