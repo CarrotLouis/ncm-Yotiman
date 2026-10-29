@@ -13,6 +13,7 @@ using Microsoft.Web.WebView2.WinForms;
 internal static class SmokeRunner {
     static Dictionary<string,object> Context() => new Dictionary<string,object> {
         {"term","歌う"},{"sentence","私は戀人と歌う。"},{"offset",5},{"title","試験曲 — 試験歌手"},{"url","https://music.163.com/song?id=42"},{"matchMode","longest-in-range"},
+        {"translation","我与你歌唱。"},{"songTitle","試験曲"},{"songArtist","試験歌手"},
         {"segments",new [] {
             new Dictionary<string,object>{{"text","私は"},{"reading",""}},new Dictionary<string,object>{{"text","戀人"},{"reading","あなた"}},
             new Dictionary<string,object>{{"text","と"},{"reading",""}},new Dictionary<string,object>{{"text","歌う"},{"reading","うたう"}},

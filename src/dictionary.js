@@ -80,18 +80,18 @@
 		function showHighlight(context){if(!context.range)return;clearHighlight();highlight=context;context.line.setAttribute('data-ncm-yotiman-highlight','');const selection=win.getSelection();selection.removeAllRanges();selection.addRange(context.range.cloneRange());}
 		function cancelSpan(){if(previewFrame!==null)win.cancelAnimationFrame(previewFrame);previewFrame=null;spanAnchor=null;}
 		function reset() { cancelSpan();queuedLookup=null;spanBlocked=false;pointer=null;armed=false;anchor=null;shiftHeld=false;source='';swallowClick=false;doc.body.classList.remove('fg-dictionary-select'); }
-		async function lookup(selected){
-			if(!selected)return;if(inflight){queuedLookup=selected;return;}
+		async function lookup(selected,trackPromise){
+			if(!selected)return;trackPromise=trackPromise||Promise.resolve(api.track());if(inflight){queuedLookup={selected,trackPromise};return;}
 			diagnostics.selected++;inflight=true;
 			try {
-				const track=await api.track();if(!enabled)return;
+				const track=await trackPromise;if(!enabled)return;
 				if(!track||!track.id)throw new Error('未取得歌曲 ID，请打开歌曲播放页后重试');
 				diagnostics.sent++;diagnostics.last='正在查词…';refresh();
-				const started=Date.now();const reply=await send('lookup',{...selected,matchMode:'longest-in-range',theme:api.theme?api.theme():'dark',title:track.title||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});diagnostics.lastLookupMs=Date.now()-started;
+				const started=Date.now();const reply=await send('lookup',{...selected,matchMode:'longest-in-range',theme:api.theme?api.theme():'dark',title:track.title||'',songTitle:track.songTitle||'',songArtist:track.songArtist||'',url:'https://music.163.com/song?id='+encodeURIComponent(track.id)});diagnostics.lastLookupMs=Date.now()-started;
 				const match=reply&&reply.match;
 				if(highlight===selected&&selected.line.isConnected&&capture.snapshot(selected.line).sentence===selected.sentence&&match&&Number.isInteger(match.offset)&&Number.isInteger(match.length)&&match.length>0&&match.offset>=selected.offset&&match.offset+match.length<=selected.offset+selected.term.length){const actual=capture.fromOffsets(doc,selected.line,match.offset,match.offset+match.length);if(actual&&actual.term===match.text)showHighlight(actual);}
 				diagnostics.last='查词窗口已打开';refresh();
-			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;const next=queuedLookup;queuedLookup=null;if(next&&enabled&&next.line.isConnected&&capture.snapshot(next.line).sentence===next.sentence)lookup(next);}
+			}catch(e){error=e.message;diagnostics.last='查词失败：'+e.message;refresh();}finally{inflight=false;const next=queuedLookup;queuedLookup=null;if(next&&enabled&&next.selected.line.isConnected&&capture.snapshot(next.selected.line).sentence===next.selected.sentence)lookup(next.selected,next.trackPromise);}
 		}
 		function updateSpan(){
 			if(!pointer||!enabled||armed||spanBlocked||inputMode==='drag')return;

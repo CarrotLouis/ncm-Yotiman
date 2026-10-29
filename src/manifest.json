@@ -2,7 +2,7 @@
   "manifest_version":1,
   "name":"Yomitan 歌词词典",
   "slug":"ncm-yotiman",
-  "version":"0.1.6",
+  "version":"0.1.7",
   "author":"CarrotLouis",
   "author_link":"https://github.com/CarrotLouis/ncm-Yotiman",
   "description":"按住 Shift 连续划选歌词、松开查词，导入 Yomitan 词典并携带当前振假名制卡（实验版）",

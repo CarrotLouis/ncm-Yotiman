@@ -33,7 +33,8 @@
   let playing;try{playing=store&&store.getState().playing;}catch(_){store=null;}
   const current=playing&&(playing.curTrack||playing.playingTrack||playing.track||playing.resourceTrack);
   const id=playing&&(playing.resourceTrackId||playing.trackId||current&&(current.id||current.trackId))||plus&&plus.trackId&&plus.trackId();
-  return id?{id:String(id),title:current&&current.name?current.name+' — '+(current.ar||current.artists||[]).map(a=>a.name).filter(Boolean).join(' / '):document.title}:null;
+  const songTitle=current&&current.name||'',songArtist=(current&&(current.ar||current.artists)||[]).map(a=>a.name).filter(Boolean).join(' / ');
+  return id?{id:String(id),songTitle,songArtist,title:songTitle?[songTitle,songArtist].filter(Boolean).join(' — '):document.title}:null;
  }
  function theme(){
   const style=getComputedStyle(document.body),rnp=document.body.classList.contains('rnp-lyric-page-open');
@@ -44,7 +45,7 @@
  }
  async function probe(){
   const helper=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';
-  return {build:'ncm-Yotiman 0.1.6',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
+  return {build:'ncm-Yotiman 0.1.7',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
  }
  function panel(){
   if(settingsPanel){refreshPanel();return settingsPanel;}
@@ -70,7 +71,7 @@
   const legacy=window.JPFuriganaPlus;
   if(legacy&&legacy.dictionary){legacy.dictionary.destroy();legacy.set('dictionaryEnabled',false);legacy.dictionary=null;}
   dictionary=NcmYotimanDictionary.install({betterncm,plugin,config:()=>config,set,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},track,theme,error:text=>console.warn('[ncm-Yotiman]',text)});
-  window.NcmYotiman={config,set,track,theme,probe,dictionary,build:'0.1.6'};
+  window.NcmYotiman={config,set,track,theme,probe,dictionary,build:'0.1.7'};
   console.log('[ncm-Yotiman] Loaded; dictionary '+(config.dictionaryEnabled?'enabled':'disabled'));
  }
  if(typeof plugin.onAllPluginsLoaded==='function')plugin.onAllPluginsLoaded(start);else plugin.onLoad(()=>start(window.loadedPlugins));

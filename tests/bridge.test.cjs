@@ -9,24 +9,25 @@ class FakeAPI{
  parseText(){return Promise.resolve([{source:'scanning-parser',content:[[{text:snapshot.sentence,reading:'wrong'}]]}]);}
 }
 class FakeBuilder{_getTextFurigana(){return Promise.resolve([]);}}
+class FakeDisplayAnki{_getNoteContext(){return {};}}
 class FakeDisplay{constructor(){this._application={api:new FakeAPI()};}setContent(details){this.details=details;} _setQuery(term,sentence,offset){this.query={term,sentence,offset};}async _findDictionaryEntries(){return ['original'];}async _setContentTermsOrKanji(){return this._findDictionaryEntries(false,this.details.params.query,'',false,{});}}class FakeClipboard{start(){throw new Error('Embedded lookup must not scan the clipboard');}}
 FakeAPI.prototype.termsFind=async query=>({dictionaryEntries:query.startsWith('歌う')?[{headwords:[{sources:[{originalText:'歌う'}]}]}]:[]});
 const messages=[],chrome={runtime:{getURL:x=>x},webview:{addEventListener:(type,listener)=>{receive=listener;},postMessage:message=>{messages.push(message);if(message.id)queueMicrotask(()=>receive({data:{id:message.id,audio:null}}));}}};
 let source=fs.readFileSync(require.resolve('../companion/yomitan/page-bridge.js'),'utf8').replace('__FG_CONTEXT__',JSON.stringify(snapshot));
-const imports="Promise.all([import(chrome.runtime.getURL('/js/comm/api.js')),import(chrome.runtime.getURL('/js/data/anki-note-builder.js')),import(chrome.runtime.getURL('/js/display/display.js')),import(chrome.runtime.getURL('/js/comm/clipboard-monitor.js'))])";
-assert(source.includes(imports));source=source.replace(imports,'Promise.resolve([{API:FakeAPI},{AnkiNoteBuilder:FakeBuilder},{Display:FakeDisplay},{ClipboardMonitor:FakeClipboard}])');
-const embedded={chrome,NcmYotimanRangeMatch:require('../companion/yomitan/range-match.js')};
+const imports="Promise.all([import(chrome.runtime.getURL('/js/comm/api.js')),import(chrome.runtime.getURL('/js/data/anki-note-builder.js')),import(chrome.runtime.getURL('/js/display/display.js')),import(chrome.runtime.getURL('/js/comm/clipboard-monitor.js')),import(chrome.runtime.getURL('/js/display/display-anki.js'))])";
+assert(source.includes(imports));source=source.replace(imports,'Promise.resolve([{API:FakeAPI},{AnkiNoteBuilder:FakeBuilder},{Display:FakeDisplay},{ClipboardMonitor:FakeClipboard},{DisplayAnki:FakeDisplayAnki}])');
+const embedded={chrome,NcmYotimanRangeMatch:require('../companion/yomitan/range-match.js'),NcmYotimanAnki:require('../companion/yomitan/anki-context.js')};
 const html=dom.window.document.documentElement;let rootReady=false;Object.defineProperty(dom.window.document,'documentElement',{get:()=>rootReady?html:null});
-vm.runInNewContext(source,{FakeAPI,FakeBuilder,FakeDisplay,FakeClipboard,window:embedded,chrome,MutationObserver:dom.window.MutationObserver,document:dom.window.document,location:{pathname:'/search.html',href:'https://test.invalid'},history:{replaceState(){}},setTimeout,clearTimeout,console});
+vm.runInNewContext(source,{FakeAPI,FakeBuilder,FakeDisplay,FakeDisplayAnki,FakeClipboard,window:embedded,chrome,MutationObserver:dom.window.MutationObserver,document:dom.window.document,location:{pathname:'/search.html',href:'https://test.invalid'},history:{replaceState(){}},setTimeout,clearTimeout,console});
 rootReady=true;dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
 (async()=>{
  await new Promise(r=>setTimeout(r,0));assert.equal(dom.window.document.documentElement.dataset.fgBridge,'ready');
  const api=new FakeAPI(),note={modelName:'Model',deckName:'Deck',fields:{Sentence:snapshot.sentence,Meaning:'untouched'}};
  await api.addAnkiNote(note);await api.updateAnkiNote({...note,id:42});
- for(const {note:sent}of notes){assert.equal(sent.fields.Sentence,'<ruby>戀人<rt>あなた</rt></ruby>と歌う');assert.equal(sent.fields.Meaning,'untouched');}
+ for(const {note:sent}of notes){assert.equal(sent.fields.Sentence,snapshot.sentence,'Do not rewrite a rendered note using the latest lyric');assert.equal(sent.fields.Meaning,'untouched');}
  assert.equal(notes[1].note.id,42);
  const rows=await new FakeBuilder()._getTextFurigana([{text:snapshot.sentence,readingMode:null}]);
- assert.equal(rows[0].detailsHtml.value,notes[0].note.fields.Sentence);assert.equal(rows[0].detailsPlain.value,'戀人[あなた]と歌う');
+ assert.equal(rows[0].detailsHtml.value,'<ruby>戀人<rt>あなた</rt></ruby>と歌う');assert.equal(rows[0].detailsPlain.value,'戀人[あなた]と歌う');
  const parsed=await api.parseText(snapshot.sentence);assert.equal(parsed[0].content[0][0].reading,'あなた');
  dom.window.document.documentElement.dataset.loaded='true';const display=new FakeDisplay();dom.window.document.querySelector('#search-button').onclick=()=>display.setContent({params:{query:dom.window.document.querySelector('#search-textbox').value},state:{},content:{}});
  assert(embedded.NcmYotimanLookup({...snapshot,term:'歌う',theme:'light'}));assert.equal(display.details.state.sentence.text,snapshot.sentence);assert.equal(display.details.state.documentTitle,snapshot.title);assert.equal(dom.window.document.documentElement.dataset.theme,'light');

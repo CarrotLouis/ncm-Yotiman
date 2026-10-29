@@ -14,5 +14,6 @@
     <Reference Include="System.Web.Extensions" />
     <Content Include="page-bridge.js" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="range-match.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="anki-context.js" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

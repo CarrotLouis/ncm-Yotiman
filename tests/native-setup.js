@@ -18,7 +18,7 @@
   const opts=await api.optionsGetFull(),p=opts.profiles[opts.profileCurrent].options;
   p.dictionaries=infos.map(d=>DictionaryController.createDefaultDictionarySettings(d.title,true,d.styles));
   Object.assign(p.anki,{enable:true,server:'http://127.0.0.1:18766',apiKey:'',noteDupeCheckFirst:false,forceSync:false});
-  const fields={};for(const [key,value]of Object.entries({Expression:'{expression}',Sentence:'{sentence}',SentenceRuby:'{sentence-furigana}',SentencePlain:'{sentence-furigana-plain}',SentenceAudio:'',Source:'{document-title}',ClozePrefix:'{cloze-prefix}',ClozeBody:'{cloze-body}',ClozeSuffix:'{cloze-suffix}'}))fields[key]={value,overwriteMode:'coalesce'};
+  const fields={};for(const [key,value]of Object.entries({Expression:'{expression}',Sentence:'{sentence}',SentenceRuby:'{sentence-furigana}',SentencePlain:'{sentence-furigana-plain}',SentenceTrans:'{ncm-sentence-translation}',SentenceAudio:'',Source:'{document-title}',MiscInfo:'{document-title}<br>{url}',SongTitle:'{ncm-song-title}',SongArtist:'{ncm-song-artist}',ClozePrefix:'{cloze-prefix}',ClozeBody:'{cloze-body}',ClozeSuffix:'{cloze-suffix}'}))fields[key]={value,overwriteMode:'coalesce'};
   p.anki.cardFormats=[{name:'Smoke',icon:'big-circle',deck:'Smoke',model:'Smoke',type:'term',fields}];
   await api.setAllSettings(opts,'native-smoke');
   window.__ncmSmoke='configured';

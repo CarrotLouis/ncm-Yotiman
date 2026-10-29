@@ -1,7 +1,12 @@
 /* Our adapter, MIT. Loaded only in the bundled, unchanged Yomitan search page. */
 (() => {
   'use strict';
-  if (location.pathname !== '/search.html' || !window.chrome?.webview) return;
+  if (!window.chrome?.webview) return;
+  if(location.pathname==='/settings.html'){
+    import(chrome.runtime.getURL('/js/pages/settings/anki-controller.js')).then(({AnkiController})=>window.NcmYotimanAnki.installMenus(AnkiController));
+    return;
+  }
+  if (location.pathname !== '/search.html') return;
   let context = __FG_CONTEXT__;
   let segments=[],sentenceHtml='',sentencePlain='',nextQuery=null;
   const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,7 +20,7 @@
   // receive the lyric as {sentence}, including the selected word's exact offset.
   history.replaceState({state: {
     sentence: {text: context.sentence, offset: context.offset},
-    documentTitle: context.title, url: context.url,
+    documentTitle: context.title, url: context.url, ncmLyrics:context,
   }}, '', location.href);
   const pending = new Map(); let serial = 0;
   chrome.webview.addEventListener('message', ({data}) => {
@@ -33,14 +38,15 @@
   }
   // Reuse Yomitan's original add-note operation. A chosen ShareX file is sent
   // only when the user presses Yomitan's Add button, never during lookup.
-  Promise.all([import(chrome.runtime.getURL('/js/comm/api.js')),import(chrome.runtime.getURL('/js/data/anki-note-builder.js')),import(chrome.runtime.getURL('/js/display/display.js')),import(chrome.runtime.getURL('/js/comm/clipboard-monitor.js'))]).then(([{API},{AnkiNoteBuilder},{Display},{ClipboardMonitor}]) => {
+  Promise.all([import(chrome.runtime.getURL('/js/comm/api.js')),import(chrome.runtime.getURL('/js/data/anki-note-builder.js')),import(chrome.runtime.getURL('/js/display/display.js')),import(chrome.runtime.getURL('/js/comm/clipboard-monitor.js')),import(chrome.runtime.getURL('/js/display/display-anki.js'))]).then(([{API},{AnkiNoteBuilder},{Display},{ClipboardMonitor},{DisplayAnki}]) => {
+    window.NcmYotimanAnki.install(AnkiNoteBuilder,DisplayAnki);
     // The embedded page receives explicit lyric requests. A copied clipboard
     // must never replace that request, even if the user's browser profile scans it.
     ClipboardMonitor.prototype.start=function(){};
     const setContent=Display.prototype.setContent;
     Display.prototype.setContent=function(details){
       this.__ncmRangeRequest=null;
-      if(nextQuery!==null&&details.params.query===nextQuery){nextQuery=null;details={...details,params:{...details.params,full:context.sentence,offset:String(context.offset),wildcards:'off'},state:{...details.state,sentence:{text:context.sentence,offset:context.offset},documentTitle:context.title,url:context.url}};this.__ncmRangeRequest={value:context,state:details.state,match:null};}
+      if(nextQuery!==null&&details.params.query===nextQuery){nextQuery=null;details={...details,params:{...details.params,full:context.sentence,offset:String(context.offset),wildcards:'off'},state:{...details.state,sentence:{text:context.sentence,offset:context.offset},documentTitle:context.title,url:context.url,ncmLyrics:context}};this.__ncmRangeRequest={value:context,state:details.state,match:null};}
       return setContent.call(this,details);
     };
     const find=Display.prototype._findDictionaryEntries;
@@ -85,17 +91,9 @@
     for(const method of ['addAnkiNote','updateAnkiNote']){
     const original = API.prototype[method];
     API.prototype[method] = async function(note) {
-      const snapshot=context,readings=segments,html=sentenceHtml;
       const options = await this.optionsGetFull();
-      if(readings.some(s=>s.reading)){
-        const formats=options.profiles[options.profileCurrent].options.anki.cardFormats.filter(f=>f.model===note.modelName&&f.deck===note.deckName);
-        const fields={...note.fields};
-        for(const format of formats)for(const [name,setting]of Object.entries(format.fields)){
-          const template=typeof setting==='string'?setting:setting.value||'';
-          if(template.includes('{sentence}')&&typeof fields[name]==='string')fields[name]=fields[name].split(escape(snapshot.sentence)).join(html);
-        }
-        note={...note,fields};
-      }
+      // Fields were already rendered from the note's history snapshot. Do not
+      // rewrite them using whichever lyric happens to be open at Add completion.
       const audio = await audioForNote(Object.keys(note.fields));
       if (audio) {
         const anki = options.profiles[options.profileCurrent].options.anki;

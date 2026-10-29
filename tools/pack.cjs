@@ -9,6 +9,7 @@ for(const name of ['manifest.json','main.js','selection.js','dictionary.js','pre
 }
 assert(entries.some(e=>e.name==='yomitan-host/yomitan/sw.js'));
 assert(entries.some(e=>e.name==='yomitan-host/range-match.js'),'Missing range matching companion');
+assert(entries.some(e=>e.name==='yomitan-host/anki-context.js'),'Missing Anki context companion');
 assert(entries.every(e=>!e.name.includes('\\')&&!/profile\/|requests\/|term_bank_|\.pdb$/.test(e.name)),'Private data or build debug files in package');
 for(const entry of manifest.injects.Main)assert(entries.some(e=>e.name===entry.file));
 const output=path.join(root,'builds','ncm-yotiman-'+manifest.version+'.plugin');fs.mkdirSync(path.dirname(output),{recursive:true});fs.writeFileSync(output,buildZip(entries));

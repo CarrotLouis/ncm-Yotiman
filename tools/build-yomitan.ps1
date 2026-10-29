@@ -8,7 +8,7 @@ if($LASTEXITCODE -ne 0){throw 'Companion build failed'}
 $targetDir=Join-Path $projectRoot 'src/yomitan-host'
 New-Item -ItemType Directory -Path $targetDir -Force|Out-Null
 $builtDir=Join-Path $projectRoot 'companion/yomitan/bin/Release/net48'
-foreach($name in @('CloudmusicYomitan.exe','CloudmusicYomitan.exe.config','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','page-bridge.js','range-match.js')){Copy-Item -LiteralPath (Join-Path $builtDir $name) -Destination $targetDir -Force}
+foreach($name in @('CloudmusicYomitan.exe','CloudmusicYomitan.exe.config','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','page-bridge.js','range-match.js','anki-context.js')){Copy-Item -LiteralPath (Join-Path $builtDir $name) -Destination $targetDir -Force}
 $extensionDir=Join-Path $targetDir 'yomitan'
 if(!(Test-Path -LiteralPath $extensionDir)){Expand-Archive -LiteralPath $archivePath -DestinationPath $extensionDir}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'companion/yomitan/NOTICE.md') -Destination $targetDir -Force

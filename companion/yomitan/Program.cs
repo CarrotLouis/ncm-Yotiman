@@ -170,9 +170,11 @@ namespace CloudmusicYomitan {
                 if(term.Length==0 || term.Length>120 || sentence.Length>4000 || offset<0 || offset+term.Length>sentence.Length || sentence.Substring(offset,term.Length)!=term) throw new InvalidDataException("选词与原文不一致，请重新选择同一行中的文字");
                 ClearAudio();
                 object segments=ValidateSegments(command,sentence);
+                string translation=Json.Text(command,"translation"),songTitle=Json.Text(command,"songTitle"),songArtist=Json.Text(command,"songArtist");
+                if(translation.Length>8000||songTitle.Length>1000||songArtist.Length>1000||title.Length>2000||url.Length>2000)throw new InvalidDataException("歌词上下文过大");
                 await EnsureSearch();ApplyTheme(Json.Text(command,"theme"));
                 pendingTerm=term;pendingSentence=sentence;pendingOffset=offset;LastMatch=null;lookupReady=new TaskCompletionSource<bool>();
-                string result=await view.CoreWebView2.ExecuteScriptAsync("window.NcmYotimanLookup("+Json.Encode(new {term,sentence,segments,offset,title,url,theme=Json.Text(command,"theme"),matchMode=Json.Text(command,"matchMode")})+")");
+                string result=await view.CoreWebView2.ExecuteScriptAsync("window.NcmYotimanLookup("+Json.Encode(new {term,sentence,segments,translation,songTitle,songArtist,offset,title,url,theme=Json.Text(command,"theme"),matchMode=Json.Text(command,"matchMode")})+")");
                 if(result!="true")throw new InvalidOperationException("词典页面未就绪");
                 Reveal(source);if(await Task.WhenAny(lookupReady.Task,Task.Delay(8000))!=lookupReady.Task)throw new TimeoutException("词典查询超时，请重试");await lookupReady.Task;
             }else{initializeTask=initializeTask??Initialize();await initializeTask;ApplyTheme(Json.Text(command,"theme"));view.CoreWebView2.Navigate("chrome-extension://"+extensionId+"/settings.html");Reveal();}
@@ -187,7 +189,7 @@ namespace CloudmusicYomitan {
             if(!extension.IsEnabled) await extension.EnableAsync(true);
             extensionId=extension.Id;
             string bridge=File.ReadAllText(Path.Combine(home,"page-bridge.js"),Encoding.UTF8).Replace("__FG_CONTEXT__",Json.Encode(new {sentence="",segments=new object[0],offset=0,title="",url="",theme="dark"}));
-            scriptId=await core.AddScriptToExecuteOnDocumentCreatedAsync(File.ReadAllText(Path.Combine(home,"range-match.js"),Encoding.UTF8)+"\n"+bridge);
+            scriptId=await core.AddScriptToExecuteOnDocumentCreatedAsync(File.ReadAllText(Path.Combine(home,"range-match.js"),Encoding.UTF8)+"\n"+File.ReadAllText(Path.Combine(home,"anki-context.js"),Encoding.UTF8)+"\n"+bridge);
             core.NavigationStarting+=(s,e)=>{
                 var uri=new Uri(e.Uri);
                 if(uri.Scheme!="chrome-extension" || uri.Host!=extensionId) e.Cancel=true;

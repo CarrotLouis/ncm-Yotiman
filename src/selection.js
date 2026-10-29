@@ -6,6 +6,30 @@
  const element=node=>node&&node.nodeType===1?node:node&&node.parentElement;
  const excluded=node=>element(node)&&element(node).closest(EXCLUDE);
  function plain(node){const copy=node.cloneNode(true);if(copy.nodeType===1&&copy.matches(EXCLUDE))return '';for(const el of copy.querySelectorAll?copy.querySelectorAll(EXCLUDE):[])el.remove();return copy.textContent||'';}
+ function translation(line){
+  // Match only the selected row; never search a neighbouring/current-playing row.
+  const row=line.closest('.rnp-lyrics-line,.rnp-lyrics-overview-line');
+  if(row){
+   const translated=row.querySelector('.rnp-lyrics-line-translated,.rnp-lyrics-overview-line-translation');
+   if(translated)return plain(translated).trim().slice(0,8000);
+   // RNP does not mount the translation when its display toggle is off. Its row
+   // props still contain it; a bounded read keeps capture independent of that toggle.
+   const normalize=text=>String(text||'').replace(/\s/g,'');
+   for(let el=line;el;el=el.parentElement){
+    const key=Object.keys(el).find(k=>k.startsWith('__reactFiber$'));
+    let fiber=key&&el[key];
+    for(let i=0;fiber&&i<8;i++,fiber=fiber.return){
+     const props=fiber.memoizedProps,lyric=props&&props.line;
+     if(lyric&&typeof lyric.originalLyric==='string'&&normalize(lyric.originalLyric)===normalize(plain(line))&&typeof lyric.translatedLyric==='string')return lyric.translatedLyric.trim().slice(0,8000);
+    }
+    if(el===row)break;
+   }
+   return '';
+  }
+  const parent=line.parentElement;
+  const explicit=parent&&parent.querySelector('[data-ncm-yotiman-translation]');
+  return explicit?plain(explicit).trim().slice(0,8000):'';
+ }
  function snapshot(line){
   const segments=[];
   function add(text,reading=''){if(!text)return;const last=segments[segments.length-1];if(last&&!last.reading&&!reading)last.text+=text;else segments.push({text,reading});}
@@ -99,7 +123,7 @@
  function pointContext(doc,line,data,start,end){
   const term=data.sentence.slice(start,end);if(!term||term.length>120||!/[\u3040-\u30ff\u3400-\u9fff]/.test(term))return null;
   const range=rangeForOffsets(doc,line,start,end);if(!range)return null;
-  const context={term,...data,offset:start};Object.defineProperties(context,{range:{value:range},line:{value:line}});return context;
+  const context={term,...data,translation:translation(line),offset:start};Object.defineProperties(context,{range:{value:range},line:{value:line}});return context;
  }
  function fromOffsets(doc,line,start,end){return pointContext(doc,line,snapshot(line),start,end);}
  function begin(doc,event,preferredLine){
