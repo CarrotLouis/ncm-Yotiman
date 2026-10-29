@@ -1,7 +1,7 @@
 {
-  "version": "0.1.8",
-  "sourceCommit": "7ef41ab5b9cac2126a5f2e833325b6c42573cb5d",
-  "workflow": "https://github.com/CarrotLouis/ncm-Yotiman/actions/runs/40875548007",
+  "version": "0.1.9",
+  "sourceCommit": "306183f578faa8695a1b6ee07039188c2f3c939b",
+  "workflow": "https://github.com/CarrotLouis/ncm-Yotiman/actions/runs/40876818897",
   "yomitan": {
     "version": "26.10.12.0",
     "commit": "e7334a96106a6c74e6fa75bd33a5ea1219d92712",
@@ -9,16 +9,16 @@
     "sourceSha256": "94da804ccc758db53d5f2fed9a825a0a8b38238e556f61b26e131353586344b1"
   },
   "files": {
-    "CORRESPONDING-SOURCE.txt": "1deca70e8c917b8072fd100b821e76ac3bbca3266ca7abc94bed7805178527dc",
-    "dictionary.js": "dc314028c3ddedae11e9834c6e94202f0cb758fa015e4c0ee97ebbd4dcd2e898",
+    "CORRESPONDING-SOURCE.txt": "7bf977dff09682315e73b45b74dc8199de086c4c7cf22e326cc58fa7dc54991b",
+    "dictionary.js": "f8122358caee0c798ae65a52ccef563d027aa3cd991c2c31aa54e8bc7fc1757c",
     "LICENSE": "45552616069622e14b9fda7c2925c30984eb2129d07929d1ffc936d1905eb984",
-    "main.js": "c23797d76e90e037eb0c50d7a8a3edbc66bae0db5c530f8f063cea67a6730f98",
-    "manifest.json": "0bb00a97e4df0b9e2b89a895c6f0d2c4b88b38e0056644aea8724a2c78c91798",
+    "main.js": "049319b616e3705e8f1580f660c8424bff684396a19df25edf919bf878dfc3fc",
+    "manifest.json": "99ea0ed16e34362cfc6aacfe69524025283fb010632d0bf9b6cf5ac839f2b412",
     "NOTICE.md": "2bfe810550a2902ff1824ba7d2f979982dd62cf85d533852ee9682430d4788e6",
     "preview.png": "7c3a3213fab5f0acc6b0c79ee159bef4eaf1b98f14f4b9a31efbf7f30c78d8dc",
     "selection.js": "56006cdb7e28b64782c0278f95c2caf039eea610186c2c5d97c37728f6d8f32e",
     "yomitan-host/anki-context.js": "9e63df729ee45fc726dd71b7f50f778b1d8f41770ac2623f506e585fadb7fe3b",
-    "yomitan-host/CloudmusicYomitan.exe": "ec1141fb45e3c59f67f87ca759994a7ef581dc06ea18891179830fae2b6327ce",
+    "yomitan-host/CloudmusicYomitan.exe": "7df00509ff3beb9e29766f595e2ce7bf038e8cd0bab54a89f7f9c53fd3a135e7",
     "yomitan-host/CloudmusicYomitan.exe.config": "1c2a32997c86cf94e28441ffe6b79213bec160d0aafafc7a57d84d5f172e26fc",
     "yomitan-host/Microsoft.Web.WebView2.Core.dll": "88a3b62f45225a811cdb85df6dfd95c2bff9a0e43e3b04f813b125eaca56cc9f",
     "yomitan-host/Microsoft.Web.WebView2.WinForms.dll": "29fc954c3fde1749817d158f3dd5ebe9efd3b3ce9708d86092fb1e9f023a1cb0",

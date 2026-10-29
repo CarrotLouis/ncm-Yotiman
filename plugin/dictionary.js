@@ -55,6 +55,8 @@
 		[data-ncm-yotiman-highlight] ::selection,[data-ncm-yotiman-highlight]::selection{background:#67d8ff66;color:inherit}
 		[data-tab="${TAB}"] .fg-dictionary-hint {opacity:.65;font-size:13px;line-height:1.6;margin:12px 0;white-space:pre-wrap}
 		[data-tab="${TAB}"] button {border-radius:6px;padding:6px} [data-tab="${TAB}"] [role="alert"] {color:#ffb4ab} [data-tab="${TAB}"] [hidden] {display:none!important}`;
+		style.textContent+=`[data-tab="${TAB}"] .rnp-select-group{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+		[data-tab="${TAB}"] .rnp-select-group-btn[data-input-mode]{width:100%;min-width:0;max-width:100%;height:auto;min-height:32px;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere;line-height:1.45;padding:6px 8px;border-radius:6px}`;
 		doc.head.append(style);
 		function refresh() {
 			for(const {group} of menus.values()) {
