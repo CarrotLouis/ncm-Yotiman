@@ -9,8 +9,10 @@ using System.Diagnostics;
 using CloudmusicYomitan;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
+using System.Runtime.InteropServices;
 
 internal static class SmokeRunner {
+    [DllImport("user32.dll")]static extern bool ShowWindow(IntPtr handle,int command);
     static Dictionary<string,object> Context() => new Dictionary<string,object> {
         {"term","歌う"},{"sentence","私は戀人と歌う。"},{"offset",5},{"title","試験曲 — 試験歌手"},{"url","https://music.163.com/song?id=42"},{"matchMode","longest-in-range"},
         {"translation","我与你歌唱。"},{"songTitle","試験曲"},{"songArtist","試験歌手"},
@@ -30,6 +32,8 @@ internal static class SmokeRunner {
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
         var anchor=new Form {Text="ncm-Yotiman · 验证",Width=400,Height=100};
         anchor.Shown+=async(s,e)=>{
+            WindowPolicy.IsMusicWindow=handle=>handle==anchor.Handle;
+            ShowWindow(anchor.Handle,5);
             var log=Path.Combine(args[0],"smoke.log");Action<string> write=text=>File.AppendAllText(log,DateTime.UtcNow.ToString("o")+" "+text+Environment.NewLine);
             write("BEGIN");
             try {
@@ -71,6 +75,18 @@ internal static class SmokeRunner {
                     anchor.Activate();await Task.Delay(100);var dark=Context();dark["theme"]="dark";await window.Open(dark,anchor.Handle);await Wait(core,"document.documentElement.dataset.theme==='dark'");
                     anchor.Activate();await Task.Delay(100);startup.Restart();await window.Open(dark,anchor.Handle);write("SAME_LOOKUP_MS "+startup.ElapsedMilliseconds);if(startup.ElapsedMilliseconds>1500)throw new Exception("Repeated lookup stalled");
                     await Wait(core,"!!document.querySelector('[data-action=save-note]:not(:disabled)')");
+                    window.Activate();view.Focus();await Task.Delay(100);
+                    WindowPolicy.CursorRoot=()=>window.Handle;
+                    await core.ExecuteScriptAsync("document.querySelector('#search-textbox').focus()");
+                    await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Encode(new {type="keyDown",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16,modifiers=8}));await Task.Delay(100);
+                    if(WindowPolicy.GetForegroundWindow()!=window.Handle)throw new Exception("Typing Shift in the dictionary search input lost focus");
+                    await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Encode(new {type="keyUp",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16}));
+                    await core.ExecuteScriptAsync("document.querySelector('[data-action=save-note]:not(:disabled)').focus()");
+                    WindowPolicy.CursorRoot=()=>anchor.Handle;
+                    await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Encode(new {type="keyDown",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16,modifiers=8}));await Task.Delay(150);
+                    if(WindowPolicy.GetForegroundWindow()!=anchor.Handle)throw new Exception("Shift after dictionary interaction did not return focus to the lyric owner");
+                    await core.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent",Json.Encode(new {type="keyUp",key="Shift",code="ShiftLeft",windowsVirtualKeyCode=16}));
+                    write("PASS Shift over lyrics returns focus; cursor over dictionary keeps keyboard focus");
                     write("LOOKUP "+await core.ExecuteScriptAsync("JSON.stringify({history:history.state,entries:document.querySelectorAll('[data-action=save-note]').length})"));
                     string wav=Path.Combine(args[0],"synthetic.wav");var bytes=new byte[844];
                     Array.Copy(System.Text.Encoding.ASCII.GetBytes("RIFF"),bytes,4);BitConverter.GetBytes(836).CopyTo(bytes,4);Array.Copy(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "),0,bytes,8,8);BitConverter.GetBytes(16).CopyTo(bytes,16);BitConverter.GetBytes((short)1).CopyTo(bytes,20);BitConverter.GetBytes((short)1).CopyTo(bytes,22);BitConverter.GetBytes(8000).CopyTo(bytes,24);BitConverter.GetBytes(16000).CopyTo(bytes,28);BitConverter.GetBytes((short)2).CopyTo(bytes,32);BitConverter.GetBytes((short)16).CopyTo(bytes,34);Array.Copy(System.Text.Encoding.ASCII.GetBytes("data"),0,bytes,36,4);BitConverter.GetBytes(800).CopyTo(bytes,40);File.WriteAllBytes(wav,bytes);

@@ -12,4 +12,8 @@ foreach($name in @('CloudmusicYomitan.exe','CloudmusicYomitan.exe.config','Micro
 $extensionDir=Join-Path $targetDir 'yomitan'
 if(!(Test-Path -LiteralPath $extensionDir)){Expand-Archive -LiteralPath $archivePath -DestinationPath $extensionDir}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'companion/yomitan/NOTICE.md') -Destination $targetDir -Force
+$nugetRoot=if($env:NUGET_PACKAGES){$env:NUGET_PACKAGES}else{Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget/packages'}
+$webviewPackage=Join-Path $nugetRoot 'microsoft.web.webview2/1.0.2903.40'
+Copy-Item -LiteralPath (Join-Path $webviewPackage 'LICENSE.txt') -Destination (Join-Path $targetDir 'WebView2-LICENSE.txt') -Force
+Copy-Item -LiteralPath (Join-Path $webviewPackage 'NOTICE.txt') -Destination (Join-Path $targetDir 'WebView2-NOTICE.txt') -Force
 Write-Output 'Local companion prepared. Nothing installed or published.'

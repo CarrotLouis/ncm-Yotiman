@@ -8,6 +8,7 @@ using CloudmusicYomitan;
 internal static class WindowRunner {
     [DllImport("user32.dll",EntryPoint="GetWindowLongPtrW")]static extern IntPtr GetWindowLongPtr(IntPtr handle,int index);
     [DllImport("user32.dll")]static extern IntPtr GetWindow(IntPtr handle,uint command);
+    [DllImport("user32.dll")]static extern bool ShowWindow(IntPtr handle,int command);
     static bool Above(Form upper,Form lower){var handle=GetWindow(lower.Handle,3);for(int n=0;handle!=IntPtr.Zero&&n<256;n++,handle=GetWindow(handle,3))if(handle==upper.Handle)return true;return false;}
     static void Require(bool value,string message){if(!value)throw new Exception(message);}
     [STAThread]static void Main(string[] args){
@@ -15,6 +16,8 @@ internal static class WindowRunner {
         Application.EnableVisualStyles();
         var main=new Form{Text="ncm-Yotiman synthetic client",Width=500,Height=200};
         main.Shown+=async(s,e)=>{
+            WindowPolicy.IsMusicWindow=handle=>handle==main.Handle;
+            ShowWindow(main.Handle,5);
             try{
                 using(var lookup=new DictionaryWindow(null,"",true))using(var settings=new DictionaryWindow(null,"",false)){
                     main.Activate();await Task.Delay(100);lookup.Reveal(main.Handle);await Task.Delay(100);
@@ -25,12 +28,17 @@ internal static class WindowRunner {
                     File.AppendAllText(log,"PASS lookup is an ordinary owned window without extra toolbar\n");
                     lookup.Reveal(main.Handle);await Task.Delay(100);Require(WindowPolicy.GetForegroundWindow()==main.Handle,"Repeated lookup stole keyboard focus");
                     lookup.Activate();await Task.Delay(100);Require(WindowPolicy.GetForegroundWindow()==lookup.Handle,"The user must still be able to focus and interact with the dictionary");
+                    WindowPolicy.CursorRoot=()=>lookup.Handle;Require(!lookup.ReturnToLyrics(),"Shift over the dictionary must keep its focus");
+                    WindowPolicy.CursorRoot=()=>main.Handle;
+                    File.AppendAllText(log,"HANDOFF before foreground="+WindowPolicy.GetForegroundWindow()+" lookup="+lookup.Handle+" owner="+main.Handle+" visible="+WindowPolicy.IsWindowVisible(main.Handle)+" iconic="+WindowPolicy.IsIconic(main.Handle)+"\n");
+                    lookup.ReturnToLyrics();await Task.Delay(100);Require(WindowPolicy.GetForegroundWindow()==main.Handle,"Shift over lyrics did not return keyboard focus to lyrics");
+                    File.AppendAllText(log,"PASS Shift handoff after dictionary interaction returns to the lyric owner\n");
                     main.Activate();lookup.Hide();await Task.Delay(100);lookup.Reveal(main.Handle);await Task.Delay(100);Require(WindowPolicy.GetForegroundWindow()==main.Handle,"Reopening a hidden lookup stole keyboard focus");
                     lookup.WindowState=FormWindowState.Minimized;main.Activate();await Task.Delay(100);lookup.Reveal(main.Handle);await Task.Delay(100);Require(!WindowPolicy.IsIconic(lookup.Handle)&&WindowPolicy.GetForegroundWindow()==main.Handle,"Restoring a minimized lookup stole keyboard focus");
                     File.AppendAllText(log,"PASS first, repeated, hidden and minimized lookup preserve client keyboard focus; dictionary remains interactive\n");
                     using(var other=new Form{Text="Synthetic unrelated app"}){other.Show();other.Activate();await Task.Delay(250);var before=WindowPolicy.GetForegroundWindow();Require(before!=main.Handle,"Test could not move focus away from the client");lookup.Reveal(main.Handle);await Task.Delay(100);Require(WindowPolicy.GetForegroundWindow()==before,"Background client stole foreground focus");}
                     File.AppendAllText(log,"PASS background request does not steal focus\n");
-                    main.WindowState=FormWindowState.Minimized;await Task.Delay(150);Require(!WindowPolicy.IsWindowVisible(lookup.Handle),"Minimized client left lookup visible");
+                    main.WindowState=FormWindowState.Minimized;await Task.Delay(150);Require(!lookup.ReturnToLyrics(),"Shift handoff must not restore a minimized client");Require(!WindowPolicy.IsWindowVisible(lookup.Handle),"Minimized client left lookup visible");
                     main.WindowState=FormWindowState.Normal;main.Activate();await Task.Delay(100);lookup.Reveal(main.Handle);await Task.Delay(100);
                     Require(lookup.WindowState!=FormWindowState.Minimized&&Above(lookup,main),"Repeated lookup did not restore the owned window");
                     Require(WindowPolicy.GetForegroundWindow()==main.Handle,"Restored owner lost keyboard focus to lookup");

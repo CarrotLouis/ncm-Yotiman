@@ -43,6 +43,10 @@ namespace CloudmusicYomitan {
         [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr window,out uint processId);
         [DllImport("user32.dll")]internal static extern bool IsIconic(IntPtr window);
         [DllImport("user32.dll")]internal static extern bool IsWindowVisible(IntPtr window);
+        [DllImport("user32.dll")]static extern bool GetCursorPos(out System.Drawing.Point point);
+        [DllImport("user32.dll")]static extern IntPtr WindowFromPoint(System.Drawing.Point point);
+        [DllImport("user32.dll")]static extern IntPtr GetAncestor(IntPtr window,uint flags);
+        internal static Func<IntPtr> CursorRoot=()=>GetCursorPos(out var point)?GetAncestor(WindowFromPoint(point),2):IntPtr.Zero;
         internal static Func<IntPtr,bool> IsMusicWindow=window=>{try{GetWindowThreadProcessId(window,out var pid);return Process.GetProcessById((int)pid).ProcessName.Equals("cloudmusic",StringComparison.OrdinalIgnoreCase);}catch{return false;}};
         internal static IntPtr MusicForeground(){var window=GetForegroundWindow();return window!=IntPtr.Zero&&IsMusicWindow(window)&&!IsIconic(window)?window:IntPtr.Zero;}
         internal sealed class OwnerWindow:IWin32Window{public IntPtr Handle{get;}internal OwnerWindow(IntPtr handle){Handle=handle;}}
@@ -122,6 +126,7 @@ namespace CloudmusicYomitan {
     internal sealed class DictionaryWindow : Form {
         [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr handle,int command);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr handle,IntPtr after,int x,int y,int width,int height,uint flags);
+        [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr handle);
         [DllImport("dwmapi.dll")]static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
         readonly WebView2 view=new WebView2 {Dock=DockStyle.Fill};
         readonly CoreWebView2Environment environment;
@@ -130,6 +135,7 @@ namespace CloudmusicYomitan {
         readonly Label audioStatus=new Label {AutoSize=true,Text="未附加音频"};
         readonly TextBox audioField=new TextBox {Width=110,Text="SentenceAudio"};
         string extensionId,scriptId,audioPath;
+        IntPtr lyricOwner;
         Task initializeTask;
         Task searchTask;TaskCompletionSource<bool> pageReady;string pendingTerm,pendingSentence;int pendingOffset;TaskCompletionSource<bool> lookupReady;
         internal object LastMatch {get;private set;}
@@ -144,6 +150,7 @@ namespace CloudmusicYomitan {
         internal void Reveal(IntPtr source=default(IntPtr)) {
             if(isLookup&&(source==IntPtr.Zero||WindowPolicy.GetForegroundWindow()!=source||WindowPolicy.IsIconic(source)))return;
             if(isLookup){
+                lyricOwner=source;
                 // Keep Shift events in the lyric window. An owned popup can be
                 // above its client without becoming the keyboard input target.
                 if(!Visible)Show(new WindowPolicy.OwnerWindow(source));
@@ -154,6 +161,10 @@ namespace CloudmusicYomitan {
             if(WindowState==FormWindowState.Minimized) WindowState=FormWindowState.Normal;
             if(!Visible)Show();
             ShowWindow(Handle,5);BringToFront();Activate();
+        }
+        internal bool ReturnToLyrics(){
+            if(!isLookup||WindowPolicy.GetForegroundWindow()!=Handle||lyricOwner==IntPtr.Zero||WindowPolicy.CursorRoot()!=lyricOwner||!WindowPolicy.IsMusicWindow(lyricOwner)||WindowPolicy.IsIconic(lyricOwner)||!WindowPolicy.IsWindowVisible(lyricOwner))return false;
+            return SetForegroundWindow(lyricOwner);
         }
         internal async Task Warmup(string theme){ApplyTheme(theme);await EnsureSearch();}
         void ApplyTheme(string theme){bool dark=theme!="light";BackColor=dark?Color.FromArgb(25,27,31):Color.FromArgb(249,250,252);if(view.CoreWebView2!=null)view.CoreWebView2.Profile.PreferredColorScheme=dark?CoreWebView2PreferredColorScheme.Dark:CoreWebView2PreferredColorScheme.Light;int value=dark?1:0;try{DwmSetWindowAttribute(Handle,20,ref value,4);}catch(DllNotFoundException){} }
@@ -206,6 +217,7 @@ namespace CloudmusicYomitan {
             core.WebMessageReceived+=(s,e)=>{
                 if(!Uri.TryCreate(e.Source,UriKind.Absolute,out var source) || source.Host!=extensionId || source.AbsolutePath!="/search.html") return;
                 var request=Json.Read(e.WebMessageAsJson); object id=request.TryGetValue("id",out var value) ? value : null;
+                if(Json.Text(request,"action")=="returnToLyrics"){ReturnToLyrics();return;}
                 if(Json.Text(request,"action")=="pageReady"){pageReady?.TrySetResult(true);return;}
                 if(Json.Text(request,"action")=="lookupComplete"){
                     if(Json.Text(request,"query")!=pendingTerm)return;

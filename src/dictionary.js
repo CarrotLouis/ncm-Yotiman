@@ -138,6 +138,9 @@
 		}
 		function move(e){
 			pointer={target:e.target,clientX:e.clientX,clientY:e.clientY};
+			// Shift may have been pressed in the dictionary before focus returned.
+			// The first lyric move carries its real modifier state, even without keydown.
+			if(enabled&&e.shiftKey&&!shiftHeld&&!e.buttons&&inputMode!=='drag')shift({type:'keydown',key:'Shift',target:e.target});
 			if(armed&&anchor){if(e.type==='mousemove'&&source==='pointerdown')return;e.preventDefault();e.stopImmediatePropagation();capture.extend(doc,anchor,e);return;}
 			if(shiftHeld&&!e.buttons&&inputMode!=='drag'){if(!spanAnchor)updateSpan();else if(previewFrame===null)previewFrame=win.requestAnimationFrame(()=>{previewFrame=null;updateSpan();});}
 		}

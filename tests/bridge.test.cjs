@@ -16,12 +16,15 @@ const messages=[],chrome={runtime:{getURL:x=>x},webview:{addEventListener:(type,
 let source=fs.readFileSync(require.resolve('../companion/yomitan/page-bridge.js'),'utf8').replace('__FG_CONTEXT__',JSON.stringify(snapshot));
 const imports="Promise.all([import(chrome.runtime.getURL('/js/comm/api.js')),import(chrome.runtime.getURL('/js/data/anki-note-builder.js')),import(chrome.runtime.getURL('/js/display/display.js')),import(chrome.runtime.getURL('/js/comm/clipboard-monitor.js')),import(chrome.runtime.getURL('/js/display/display-anki.js'))])";
 assert(source.includes(imports));source=source.replace(imports,'Promise.resolve([{API:FakeAPI},{AnkiNoteBuilder:FakeBuilder},{Display:FakeDisplay},{ClipboardMonitor:FakeClipboard},{DisplayAnki:FakeDisplayAnki}])');
-const embedded={chrome,NcmYotimanRangeMatch:require('../companion/yomitan/range-match.js'),NcmYotimanAnki:require('../companion/yomitan/anki-context.js')};
+let lookupKey;const embedded={chrome,addEventListener:(type,handler)=>{if(type==='keydown')lookupKey=handler;},NcmYotimanRangeMatch:require('../companion/yomitan/range-match.js'),NcmYotimanAnki:require('../companion/yomitan/anki-context.js')};
 const html=dom.window.document.documentElement;let rootReady=false;Object.defineProperty(dom.window.document,'documentElement',{get:()=>rootReady?html:null});
 vm.runInNewContext(source,{FakeAPI,FakeBuilder,FakeDisplay,FakeDisplayAnki,FakeClipboard,window:embedded,chrome,MutationObserver:dom.window.MutationObserver,document:dom.window.document,location:{pathname:'/search.html',href:'https://test.invalid'},history:{replaceState(){}},setTimeout,clearTimeout,console});
 rootReady=true;dom.window.document.dispatchEvent(new dom.window.Event('DOMContentLoaded'));
 (async()=>{
  await new Promise(r=>setTimeout(r,0));assert.equal(dom.window.document.documentElement.dataset.fgBridge,'ready');
+ const key={key:'Shift',isTrusted:true,target:dom.window.document.body,preventDefault(){},stopImmediatePropagation(){}};
+ lookupKey(key);assert.equal(messages.at(-1).action,'returnToLyrics');const count=messages.length;
+ for(const extra of [{repeat:true},{ctrlKey:true},{isTrusted:false}])lookupKey({...key,...extra});assert.equal(messages.length,count,'Repeated, shortcut and untrusted Shift must not request focus');
  const api=new FakeAPI(),note={modelName:'Model',deckName:'Deck',fields:{Sentence:snapshot.sentence,Meaning:'untouched'}};
  await api.addAnkiNote(note);await api.updateAnkiNote({...note,id:42});
  for(const {note:sent}of notes){assert.equal(sent.fields.Sentence,snapshot.sentence,'Do not rewrite a rendered note using the latest lyric');assert.equal(sent.fields.Meaning,'untouched');}

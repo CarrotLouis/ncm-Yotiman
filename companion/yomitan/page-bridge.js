@@ -7,6 +7,12 @@
     return;
   }
   if (location.pathname !== '/search.html') return;
+  window.addEventListener('keydown',event=>{
+    if(event.key!=='Shift'||event.repeat||event.ctrlKey||event.altKey||event.metaKey||event.isTrusted===false)return;
+    // The host checks the actual desktop cursor: keep all input normal while
+    // it remains over this window, including Shift inside editable controls.
+    chrome.webview.postMessage({action:'returnToLyrics'});
+  },true);
   let context = __FG_CONTEXT__;
   let segments=[],sentenceHtml='',sentencePlain='',nextQuery=null;
   const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

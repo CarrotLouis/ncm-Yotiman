@@ -45,7 +45,7 @@
  }
  async function probe(){
   const helper=plugin.pluginPath+'/yomitan-host/CloudmusicYomitan.exe';
-  return {build:'ncm-Yotiman 0.1.7',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
+  return {build:'ncm-Yotiman 0.1.8',enabled:config.dictionaryEnabled,helperExists:await betterncm.fs.exists(helper),hasTrack:!!track(),lyricLines:NcmYotimanSelection.lines(document).length,inputSupport:{pointerConstructor:'PointerEvent' in window,caretRange:typeof document.caretRangeFromPoint==='function',caretPosition:typeof document.caretPositionFromPoint==='function'},gesture:dictionary&&dictionary.diagnostics(),error:dictionary&&dictionary.status()};
  }
  function panel(){
   if(settingsPanel){refreshPanel();return settingsPanel;}
@@ -57,7 +57,9 @@
   root.querySelector('[data-settings]').onclick=()=>dictionary&&dictionary.openSettings().catch(e=>{status.textContent=e.message;root.querySelector('details').open=true;});
   root.querySelector('[data-check]').onclick=()=>probe().then(value=>{status.textContent=JSON.stringify(value,null,2);root.querySelector('[data-copy]').disabled=false;}).catch(e=>{status.textContent=e.message;});
   root.querySelector('[data-copy]').onclick=()=>{const text=document.createElement('textarea');text.value=status.textContent;text.style.cssText='position:fixed;left:-10000px;top:0';root.append(text);text.select();let ok=false;try{ok=document.execCommand('copy');}catch(_){}text.remove();root.querySelector('[data-copy]').textContent=ok?'已复制':'请手动复制下方结果';};
-  root.querySelector('a').onclick=e=>{e.preventDefault();betterncm.ncm.openUrl('https://github.com/CarrotLouis/ncm-Yotiman');};
+  const home=root.querySelector('a');home.textContent='源码仓库';home.href='https://github.com/CarrotLouis/ncm-Yotiman';
+  const issues=document.createElement('a');issues.textContent='反馈问题';issues.href=home.href+'/issues';home.parentElement.append(' · ',issues);
+  for(const link of [home,issues])link.onclick=e=>{e.preventDefault();betterncm.ncm.openUrl(link.href);};
   return root;
  }
  plugin.onConfig(panel);
@@ -71,7 +73,7 @@
   const legacy=window.JPFuriganaPlus;
   if(legacy&&legacy.dictionary){legacy.dictionary.destroy();legacy.set('dictionaryEnabled',false);legacy.dictionary=null;}
   dictionary=NcmYotimanDictionary.install({betterncm,plugin,config:()=>config,set,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn);},track,theme,error:text=>console.warn('[ncm-Yotiman]',text)});
-  window.NcmYotiman={config,set,track,theme,probe,dictionary,build:'0.1.7'};
+  window.NcmYotiman={config,set,track,theme,probe,dictionary,build:'0.1.8'};
   console.log('[ncm-Yotiman] Loaded; dictionary '+(config.dictionaryEnabled?'enabled':'disabled'));
  }
  if(typeof plugin.onAllPluginsLoaded==='function')plugin.onAllPluginsLoaded(start);else plugin.onLoad(()=>start(window.loadedPlugins));

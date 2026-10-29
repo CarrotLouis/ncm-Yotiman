@@ -2,7 +2,7 @@
 
 网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，**按住 Shift 移动鼠标连续划选，松开 Shift 查词**，也支持 Shift 配合鼠标左键拖选；通过 Yomitan 原生 Anki integration 制卡。
 
-**当前为 0.1.7 实验版。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
+**当前版本 0.1.8。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
 
 ## 功能
 
@@ -28,7 +28,7 @@
 
 ## 安装与设置
 
-从本地构建得到 `.plugin` 后，使用 BetterNCM 安装并在合适时重启网易云。不要同时保留多个 `ncm-yotiman` 版本。
+商店收录后可从 BetterNCM 插件商店安装；也可使用 GitHub Actions 构建产物中的 `.plugin` 手动安装，在合适时重启网易云。不要同时保留多个 `ncm-yotiman` 版本。原生组件由 Windows Actions 编译，商店跟踪自动发布的 `store` 分支 `/plugin`，详细流程和分发信息见[商店维护说明](docs/store.md)。
 
 1. 在播放页“词典”开启功能，点击“打开 Yomitan 设置”。
 2. 在 Dictionaries 中导入 Yomitan 格式 ZIP，并确认词典已启用。
@@ -71,7 +71,7 @@ powershell -NoProfile -File tools/build-yomitan.ps1 -YomitanArchive C:\Downloads
 npm run build
 ```
 
-生成 `builds/ncm-yotiman-0.1.7.plugin`。构建不会自动安装、重启网易云或发布 Release。
+生成 `builds/ncm-yotiman-0.1.8.plugin`。构建不会自动安装、重启网易云或发布 Release。
 仓库仅包含源码和测试，不包含第三方词典、用户 profile、Anki 卡片和运行时歌词。
 
 ## 故障定位
@@ -104,6 +104,12 @@ Windows 原生测试已验证：
 可通过 `companion/pointer-smoke/Pointer.csproj` 重跑浏览器拖选回归，通过 `companion/yomitan-smoke/Smoke.csproj` 和 `tests/yomitan-anki-mock.cjs` 重跑原生集成测试。测试数据必须保存在仓库外的专用目录。
 
 完整客户端鼠标交互仍需在实际网易云/RNP 中验证；该版本不宣称已通过所有环境验证。
+
+### 0.1.8：商店分发准备
+
+补充设置页源码与反馈入口、WebView2 SDK 许可和通知；Windows Actions 自动编译并发布商店目录，同时提供固定 Yomitan 版本及本插件的对应源码归档、构建记录和校验和。更换商店封面。
+
+操作查词窗口后，鼠标位于网易云歌词页时按 Shift 可交回焦点并重新划选，松开确认；鼠标位于查词窗口（包括输入框）时按 Shift 继续保留词典焦点。设置窗口或其他程序不会被抢焦点，也不会恢复已经最小化的网易云。原句、译文和读音功能沿用 0.1.7。
 
 ### 0.1.7：制卡保留译文与歌曲来源
 

@@ -4,7 +4,7 @@ const {buildZip}=require('./zip.cjs');
 const root=path.resolve(__dirname,'..'),src=path.join(root,'src'),manifest=require('../src/manifest.json');
 const entries=[];
 function collect(full,name){const stat=fs.lstatSync(full);assert(!stat.isSymbolicLink(),'Do not package links');if(stat.isDirectory()){for(const child of fs.readdirSync(full).sort())collect(path.join(full,child),name?name+'/'+child:child);}else entries.push({name,data:fs.readFileSync(full),mtime:stat.mtime});}
-for(const name of ['manifest.json','main.js','selection.js','dictionary.js','preview.jpg','LICENSE','NOTICE.md','yomitan-host']){
+for(const name of ['manifest.json','main.js','selection.js','dictionary.js',manifest.preview,'LICENSE','NOTICE.md','yomitan-host']){
  assert(fs.existsSync(path.join(src,name)),'Missing '+name+'; build the companion first');collect(path.join(src,name),name);
 }
 assert(entries.some(e=>e.name==='yomitan-host/yomitan/sw.js'));
