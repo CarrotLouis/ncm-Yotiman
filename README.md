@@ -2,7 +2,7 @@
 
 网易云音乐 PC / BetterNCM 的独立 Yomitan 歌词词典插件。导入自己的词典，**按住 Shift 移动鼠标连续划选，松开 Shift 查词**，也支持 Shift 配合鼠标左键拖选；通过 Yomitan 原生 Anki integration 制卡。
 
-**当前版本 0.1.8。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
+**当前版本 0.1.9。** 源码独立维护，不更新 `jp-furigana` 的现有 PR，不替代振假名插件。仓库名按项目命名使用 `Yotiman`，集成的词典项目名称为 **Yomitan**。
 
 ## 功能
 
@@ -71,7 +71,7 @@ powershell -NoProfile -File tools/build-yomitan.ps1 -YomitanArchive C:\Downloads
 npm run build
 ```
 
-生成 `builds/ncm-yotiman-0.1.8.plugin`。构建不会自动安装、重启网易云或发布 Release。
+生成 `builds/ncm-yotiman-0.1.9.plugin`。构建不会自动安装、重启网易云或发布 Release。
 仓库仅包含源码和测试，不包含第三方词典、用户 profile、Anki 卡片和运行时歌词。
 
 ## 故障定位
@@ -104,6 +104,10 @@ Windows 原生测试已验证：
 可通过 `companion/pointer-smoke/Pointer.csproj` 重跑浏览器拖选回归，通过 `companion/yomitan-smoke/Smoke.csproj` 和 `tests/yomitan-anki-mock.cjs` 重跑原生集成测试。测试数据必须保存在仓库外的专用目录。
 
 完整客户端鼠标交互仍需在实际网易云/RNP 中验证；该版本不宣称已通过所有环境验证。
+
+### 0.1.9：窄菜单查词方式布局
+
+查词方式改为纵向排列、整行点击的选项，长文字可换行，避免 RefinedNowPlayingNext 窄菜单中三个选项互相挤压重叠，保留原来的主题颜色及选中状态。
 
 ### 0.1.8：商店分发准备
 
