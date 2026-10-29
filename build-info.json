@@ -1,7 +1,7 @@
 {
   "version": "0.1.8",
-  "sourceCommit": "1cf72f4413cb2a253ea4e2f35a902137c2dda369",
-  "workflow": "https://github.com/CarrotLouis/ncm-Yotiman/actions/runs/40874073093",
+  "sourceCommit": "7ef41ab5b9cac2126a5f2e833325b6c42573cb5d",
+  "workflow": "https://github.com/CarrotLouis/ncm-Yotiman/actions/runs/40875548007",
   "yomitan": {
     "version": "26.10.12.0",
     "commit": "e7334a96106a6c74e6fa75bd33a5ea1219d92712",
@@ -18,7 +18,7 @@
     "preview.png": "7c3a3213fab5f0acc6b0c79ee159bef4eaf1b98f14f4b9a31efbf7f30c78d8dc",
     "selection.js": "56006cdb7e28b64782c0278f95c2caf039eea610186c2c5d97c37728f6d8f32e",
     "yomitan-host/anki-context.js": "9e63df729ee45fc726dd71b7f50f778b1d8f41770ac2623f506e585fadb7fe3b",
-    "yomitan-host/CloudmusicYomitan.exe": "adc833587503f4fbd6744b3440bd66482bb9c9dd0abe7ab16768670024f22fa4",
+    "yomitan-host/CloudmusicYomitan.exe": "ec1141fb45e3c59f67f87ca759994a7ef581dc06ea18891179830fae2b6327ce",
     "yomitan-host/CloudmusicYomitan.exe.config": "1c2a32997c86cf94e28441ffe6b79213bec160d0aafafc7a57d84d5f172e26fc",
     "yomitan-host/Microsoft.Web.WebView2.Core.dll": "88a3b62f45225a811cdb85df6dfd95c2bff9a0e43e3b04f813b125eaca56cc9f",
     "yomitan-host/Microsoft.Web.WebView2.WinForms.dll": "29fc954c3fde1749817d158f3dd5ebe9efd3b3ce9708d86092fb1e9f023a1cb0",
