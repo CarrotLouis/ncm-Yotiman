@@ -6,6 +6,9 @@ const archive=process.argv[2],source=process.argv[3];assert(archive&&source,'Pas
 const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 assert.equal(hash(archive),'270bf736862624a6f66d86ce6efb3e76307df4a6ad034073134897de8a414aa7');
 assert(!fs.existsSync(output),'Store output exists; use a fresh build directory');fs.mkdirSync(output,{recursive:true});
+// A distribution snapshot must retain the exact bytes hashed below, including
+// generated LF files and files checked out as CRLF by Windows Actions.
+fs.writeFileSync(path.join(output,'.gitattributes'),'* -text\n');
 const plugin=path.join(output,'plugin');fs.mkdirSync(plugin);
 for(const name of ['manifest.json','main.js','selection.js','dictionary.js',manifest.preview,'LICENSE','NOTICE.md','yomitan-host'])fs.cpSync(path.join(root,'src',name),path.join(plugin,name),{recursive:true,dereference:false});
 cp.execFileSync(process.execPath,[path.join(root,'tools/check-store.cjs'),plugin],{stdio:'inherit'});

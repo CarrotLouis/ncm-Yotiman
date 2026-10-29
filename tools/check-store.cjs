@@ -9,8 +9,9 @@ assert.deepEqual(manifest.requirements,['RefinedNowPlayingNext']);assert.equal(m
 assert(!['force-install','force-update','force-uninstall'].some(k=>manifest[k]),'No forced market actions');
 assert(fs.statSync(path.join(dir,manifest.preview)).size<200*1024,'Preview must stay small');
 for(const item of manifest.injects.Main)assert(fs.statSync(path.join(dir,item.file)).isFile());
-assert(fs.readFileSync(path.join(dir,'LICENSE')).equals(fs.readFileSync(path.join(root,'LICENSE'))));
-assert(fs.readFileSync(path.join(dir,'NOTICE.md')).equals(fs.readFileSync(path.join(root,'NOTICE.md'))));
+const licenseText=file=>fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
+assert.equal(licenseText(path.join(dir,'LICENSE')),licenseText(path.join(root,'LICENSE')));
+assert.equal(licenseText(path.join(dir,'NOTICE.md')),licenseText(path.join(root,'NOTICE.md')));
 const main=fs.readFileSync(path.join(dir,'main.js'),'utf8');assert(main.includes('反馈问题')&&main.includes('源码仓库')&&main.includes('betterncm.ncm.openUrl'));
 if(process.argv[2]){
  for(const name of ['CloudmusicYomitan.exe','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll'])assert.equal(fs.readFileSync(path.join(dir,'yomitan-host',name)).subarray(0,2).toString(),'MZ','Missing built native component '+name);
